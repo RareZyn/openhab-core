@@ -1,0 +1,774 @@
+Chapter 6
+Impact Analysis
+
+WIF3005 Softw re M inten nce nd Evolution
+
+a
+
+a
+
+a
+
+a
+
+a
+
+a
+
+a
+
+Prep red by Dr. N suh
+
+General Idea
+
+ff
+
+• What and Why
+• Impact Analysis Process
+• Dependency-based Impact Analysis
+• Ripple E ect
+• Change Propagation Model
+
+What and Why?
+De initions
+
+The maintenance process is initiated by performing impact analysis, through
+identifying the components that are impacted by the Change Request (CR)
+WHY??
+Impact of the changes are analyzed for the following reasons:
+🍁 To estimate the cost of executing the change request.
+🍁 To determine whether some critical portions of the system are going to be impacted due to the requested change.
+🍁 To record the history of change related information for future evaluation of changes.
+🍁 To understand how items of change are related to the structure of the software.
+🍁 To determine the portions of the software that need to be subjected to regression testing after a change is e ected.
+
+ff
+
+f
+
+Implementation of change request impacted all kinds of artefacts including the source codes, requirements, design
+documentations and test scenarios
+
+Importance of Traceability
+Gotel and Finkkelstein de ine traceability as the ability to describe and follow the life of an artifact in both the
+forward and backward directions.
+Bohner and Arnold de ine traceability as the ability to trace between software artifacts generated and modi ied
+during the software product life cycle.
+•Thus, traceability helps software developers understand the relationships among all the software artifacts in a
+project.
+
+Horizontal
+Traceability
+
+Vertical
+Traceability
+
+(External)
+
+(Internal)
+
+Tracing of artifacts
+between di erent
+models
+
+Tracing of artifacts
+within the same
+model
+
+f
+
+f
+
+f
+
+ff
+
+There are two broad kinds of traceability:
+
+Impact Analysis Process
+• Terms
+• Metrics
+• Key Aspects
+• Steps
+
+Impact Analysis Process
+Starting Impact Set (SIS):
+The initial
+Whsettof objects (or components) presumed to be impacted by a
+software CR
+Candidate Impact Set (CIS):
+The set of objects (or components) estimated to be impacted according to a
+certain impact analysis approach
+Discovered Impact Set (DIS):
+The set of new objects (or components), not contained in CIS, discovered to
+be impacted while implementing a CR.
+Actual Impact Set (AIS):
+The set of objects (or components) actually changed as a result of
+performing a CR.
+False Positive Impact Set (FPIS):
+The set of objects (or components) estimated to be impacted by an
+implementation of a CR but not actually impacted by the CR. Precisely,
+FPIS = (CIS U DIS) \ AIS.
+where U denotes set union and \denotes set di erence.
+
+ff
+
+a
+
+!!!In the process of impact analysis it is important to minimize the differences between
+AIS and CIS, by eliminating false positives and identifying true impacts.
+
+Impact Analysis Process
+Metrics (Rec ll nd Precision)
+
+Recall
+
+Precision
+
+Represents the fraction of actual
+impacts contained in CIS, and it is
+computed as the ratio of
+
+Represents the fraction of
+candidate impacts that are actually
+impacted, and it is computed as the
+ratio of
+
+| CIS ∩ AIS | to | AIS |
+
+| CIS ∩ AIS | to | CIS |
+
+The value of recall is 1 when
+DIS is empty
+
+For an empty FPIS set, the
+value of precision is 1
+
+a
+
+a
+
+* if AIS is equal to CIS, both recall and precision are computed to be equal to 1
+
+Impact Analysis Process
+Key Aspects
+E
+Adequacy and e ectiveness
+are two key aspects of any impact analysis approach.
+
+Adequacy
+Ability of the approach to identify all the
+a
+AIS ⊆ CIS
+
+Ability to generate results that actually
+bene
+Ripple-sensitivity
+(Impacted set of objects)
+Ampli
+
+Sharpness
+ChangeRate = | CIS | / | System |
+
+f
+
+ff
+
+f
+
+f
+
+ff
+
+Adherence
+S-Ratio= | AIS | / | CIS |
+
+Impact Analysis Process
+Steps
+
+–Database wrappers.
+
+Step
+
+Description
+
+Output
+
+1. Analyse the CR and
+the Documentations
+
+Begin by understanding the change
+request, reviewing current
+documentation (SRS, codebase, etc)
+and gather all relevant data
+
+SIS
+
+2. Trace potential
+impacts
+
+Assess the potential impacts of the
+change across various components,
+systems, and processes. This includes
+analyzing dependencies, interfaces,
+and data low.
+
+CIS
+
+3. Implement
+requested changes
+
+Modify the system based on the
+identi ied impacts, implementing
+necessary code changes, testing, and AIS, DIS, FPIS
+validation of the system after applying
+the changes.
+
+–System service wrappers.
+–Application wrappers.
+–Function wrappers.
+
+f
+
+f
+
+•
+
+Impact Analysis Process
+How? Tr ce bility Gr ph or Softw
+
+Horizontal Traceability Graph of a System
+
+For a node i in a graph, its indegree,
+re Lifecycle Objects
+Gr in(i),
+ph is the number of
+edges pointing to i, and in(i)
+denotes the number of nodes
+having a direct impact on i.
+
+Vertical Traceability Graph of a System
+
+a
+
+a
+
+a
+
+a
+
+a
+
+To minimize the impact of a change, outdegrees of nodes need to be made small.
+
+Impact Analysis Process
+How? Tr ce bility Gr ph or Softw re Lifecycle Objects (SLOs) Gr ph
+Each SLO represents a software artefact connected to other artefacts
+Dependencies among SLOs are represented by arrows
+Eg; SLO1 has an indirect impact from SLO8 and a direct impact from SLO9
+The in-degree of a node I re lects the number of known nodes that depend on
+Eg; SLO0, SLO5, SLO7 and SLO9 are dependent on SLO1.
+Therefore in-degree of SLO1 is 4, while out-degree of SLO1 is 3
+
+a
+
+a
+
+a
+
+f
+
+a
+
+a
+
+Directed Graph of SLOs
+
+Dependency-based Impact Analysis
+
+fi
+
+• De nitions
+• Call Graph
+• Dependency Graph
+
+Dependency-based Impact Analysis
+Wh t
+Dependency-based impact analysis techniques help identify the potential impacts of
+changes in software systems by analyzing syntactic dependencies.
+Syntactic Dependency: A direct, code-level
+relationship between functions, components, or
+methods (e.g., one function calling another).
+
+Semantic Dependency: Arises from the
+execution behavior and logic of the system,
+where a change in one component can a ect
+the behavior of another due to its syntactic
+relationship.
+
+The goal is to understand how changes in one part of the system may affect other
+interconnected components.
+
+ff
+
+a
+
+Two traditional impact analysis techniques are :
+Call Graph
+Dependency Graph
+
+Impact Analysis Techniques
+C ll Gr ph
+A call graph is
+
+•
+•
+•
+
+Is a directed graph
+Nodes represent function / component / method
+Edges represent function invocations, indicating that one function
+(node) can invoke another
+Figure 6.7 Example of a call graph ©IEEE, 2003
+
+Nodes: functions (e.g., M, A, B, C).
+Edges:(e.g., A → B means A calls B).
+
+a
+
+a
+
+Explanation: A change in function M could impact all functions that M invokes or that are invoked by M.
+
+Impact Analysis Techniques
+C ll Gr ph
+Challenges of Call Graph-Based Analysis:
+Imprecise Impact Set: Call graphs may not always produce an accurate list of
+impacted functions. For example, when M is changed, it may be unclear
+which functions beyond A and B are a ected.
+Return Procedures Not Captured: Call graphs often miss the propagation of
+impacts due to return values. For instance, modifying E might not correctly
+show how it impacts M, A, or C after returning control.
+
+Figure 6.7 Example of a call graph ©IEEE, 2003
+
+Consider the execution trace: M → B → A → C → D → E.
+Forward Search: Find functions invoked by E.
+Backward Search: Identify where E returns and what functions are impacted (e.g., M, A, C).
+
+ff
+
+a
+
+a
+
+Set of Impacted Procedures: After modifying E, the impacted set could include {M, A, C, E}.
+
+Impact Analysis Techniques
+C ll Gr ph
+Challenges of Call Graph-Based Analysis:
+Imprecise Impact Set: Call graphs may not always produce an accurate list of
+impacted functions. For example, when M is changed, it may be unclear
+which functions beyond A and B are a ected.
+Return Procedures Not Captured: Call graphs often miss the propagation of
+impacts due to return values. For instance, modifying E might not correctly
+show how it impacts M, A, or C after returning control.
+
+Figure 6.7 Example of a call graph ©IEEE, 2003
+
+Consider the execution trace: M → B → A → C → D → E.
+Forward Search: Find functions invoked by E.
+Backward Search: Identify where E returns and what functions are impacted (e.g., M, A, C).
+
+ff
+
+a
+
+a
+
+Set of Impacted Procedures: After modifying E, the impacted set could include {M, A, C, E}.
+
+Impact Analysis Techniques
+Progr m Dependency Gr ph
+
+Program Dependency Graph (PDG) represents
+a program structure through nodes and edges.
+
+• Node (vertex) represent simple statement /
+predicate expression
+
+• Edge represents
+• Data dependency (as solid edges)
+•
+•
+• • Control dependency (as dashed edges)
+
+a
+
+a
+
+Is a directed graph
+Node represent function / component / method
+Edge between two nodes can means, that node A invoke node B
+
+Figure 6.10 Program dependency graph of the program in Figure 6.9
+
+Impact Analysis Techniques
+Progr m Slicing
+
+A program slice is a subset of code that
+in luences a variable’s value at a speci ic
+program point. It is derived using PDG to
+highlight dependencies and execution low.
+
+Static Slice : includes all code statements that might affect
+the variable of interest in any possible program path. Useful
+for identifying comprehensive dependencies.
+Eg;
+1.
+
+For var Y at S10, ind reaching de initions
+
+2. Reaching de initions: {S3, S6, S8}
+3. Reachable Nodes: {S1, S2, S3, S5, S6, S8}
+
+f
+
+f
+
+f
+
+f
+
+f
+
+f
+
+f
+
+a
+
+f
+
+4. Static Slice: {S1, S2, S3, S5, S6, S8}
+
+Figure 6.10 Program dependency graph of the program in Figure 6.9
+
+Dynamic Slice : Limited to paths actually executed
+based on speci ic inputs. Useful for pinpointing
+dependencies in speci ic cases.
+Eg; (Input X = -1) for Y at S10
+1.
+
+Execution path with only includes {S1, S2, S3}
+
+2. Dynamic Slice: {S1, S2, S3}
+
+Ripple Effect
+
+ff
+
+• What
+• Example
+• Computing Ripple E ect
+
+Ripple Effect
+Wh t
+Introduced by Haney in the early 1970s and further de ned by Yau, Collofello, and McGregor in 1978.
+
+Ripple e ect means that a modi cation to a single variable may require several parts of the software system to be modi ed.
+Pinpoints a ected components and the propagation path of changes.
+Measurement of ripple e ects can provide the following information about an evolving software systems:
+
+fi
+
+ff
+
+ff
+
+fi
+
+fi
+
+ff
+
+ff
+
+ff
+
+a
+
+(i) Between successive versions of the same system, measurement of ripple e ect will tell us how the software’s complexity
+has changed.
+• (ii) When a new module is added to the system, measurement of ripple e ect on the system will tell us how the software’s
+complexity has changed because of the addition of the new module.
+
+Ripple Effect
+Ex mple
+
+showing the propagation of
+changes from a central node to
+surrounding components. Each
+node represents an a ected
+component, and the arrows
+indicate how changes in one part
+of the system can a ect other
+components.
+
+ff
+
+ff
+
+ff
+
+a
+
+Each component (node) is labeled with a variable name, and arrows show the propagation of changes from the
+central node (A) to the a ected components (B, C, D, E, F, G). The central node is highlighted in red to indicate the
+origin of the change.
+
+Ripple Effect
+Error Flow An lysis
+A complexity measure to evaluate changes in source code
+Computed by means of Error Flow Analysis
+
+Error ow analysis tracks how changes to program variables propagate errors throughout the system. By identifying variable de nitions
+and their dependencies, error ow analysis reveals potential sources of errors and how inconsistencies may spread.
+Key Insights:
+1. Tracks variable de nitions in uencing error propagation.
+2. Identi es points where error propagation ceases.
+3. Supports ripple e ect analysis by detailing error sources and propagation paths.
+
+fi
+
+fl
+
+fl
+
+fi
+
+a
+
+ff
+
+fi
+
+fl
+
+•
+
+Ripple Effect
+Computing Ripple Effect
+
+Assuming we have variables a, b, and d.
+A change in the value of b will impact a in line (1), and it
+will propagate to a in line (2).
+Variable a affects variable d in line (2) and this will
+propagate to variable d in line (3).
+•
+
+Based on the example, intramodule change propagation is
+de ned as the propagation of changes from one source
+code line in a module to another source code line within the
+same module.
+•
+
+•
+
+fi
+
+Computed by means of Error Flow Analysis
+
+Ripple Effect
+Computing Ripple Effect
+
+•
+
+Ripple Effect
+Computing Ripple Effect
+A C matrix of dimensions 1.n is chosen to represent McCabe’s cyclomatic complexity,
+where n is the number of modules:
+
+•
+
+Ripple Effect
+Computing Ripple Effect
+Sue Black examined some links between ripple e ect measurement, as summarized in the following table.
+
+ff
+
+•
+
+Change Propagation Model
+• What
+• Change Propagation Heuristics
+• Recall and Precision of Change Propagation Heuristics
+• Heuristics for Change Propagation
+
+Change Propagation
+Wh t
+Change propagation activities ensure that a change made in one component is propagated
+properly throughout the entire system
+
+a
+
+Figure 6.13 Change propagation model ©IEEE, 2004
+
+Change Propagation
+CP Heuristics
+
+Change propagation activities ensure that a change made in one component is
+propagated properly throughout the entire system
+
+Gurus rarely exist and comprehensive test suites are generally incomplete in large maintenance projects.
+
+Therefore, software maintenance engineers need good change propagation heuristics, that is, good software tools
+that can guide them in identifying entities to propagate a change.
+•The heuristic should possess the high precision attribute to be accurate and the high recall attribute to be
+complete.
+•Next, we explain the use of those two metrics to measure the change propagation heuristic by means of an
+example.
+
+Change Propagation
+Ch nge Prop g tion Heuristics
+Let us assume that Rohan wants to enhance an existing feature of a legacy
+information system. He rst identi es that entity A needs to be changed.
+A er changing A, an heuristic tool is queried for suggestions, and entities B
+and X are suggested by the tool. Next, B is changed and he determines that
+X should not be changed. Now the tool is given the information that B was
+changed, and the tool suggests that Y and W need to be changed. However,
+neither Y nor W need to be changed so no changes are performed on Y and
+W. A er having used the tool, now Rohan consults a Guru, Krushna.
+Krushna indicates that C should be changed. Now, Rohan modi es C and
+queries the heuristic for additional entities to change. In response, D is
+suggested by the tool. Next, D is changed and Krushna is further queried.
+
+Figure 6.14 Change propagation flow for a simple example ©IEEE, 2004
+
+However, this time Krushna does not suggest any more entities for change.
+
+Change Set = {A, B, C, D}
+
+Now, Rohan stops changing the legacy system.
+
+Predicted Set = {B, X, Y, W, D}.
+Occurred Set = {B, C, D}.
+
+fi
+
+fi
+
+a
+
+fi
+
+a
+
+ft
+
+a
+
+ft
+
+*The occurred set does not include A (initial entity)
+
+Change Propagation
+Ch nge Prop g tion Heuristics
+Now, recall and precision for this example are computed as follows:
+
+Figure 6.14 Change propagation flow for a simple example ©IEEE, 2004
+
+Change Set = {A, B, C, D}
+Predicted Set = {B, X, Y, W, D}.
+Occurred Set = {B, C, D}.
+
+a
+
+a
+
+a
+
+*The occurred set does not include A (initial entity)
+
+Change Propagation
+Rec ll nd Precision of Ch nge Prop g tion Heuristics
+Recall and Precision Analysis:
+Analyzing how well change propagation heuristics predict necessary modi cations.
+
+Hassan and Holt's Assumptions:
+
+fi
+
+f
+
+a
+
+a
+
+a
+
+a
+
+a
+
+Symmetric Suggestions: Changes in entity E suggest modi ications in F, and vice versa.
+Single Entity Suggestions: Predictions are based on one known entity at a time.
+Query the Tool First: Maintainers consult heuristics before expert opinions.
+
+Change Propagation
+Heuristics for Ch nge Prop g tion
+Objectives of the heuristics:
+(i) ensure that the entities that need to be modi ed are predicted.
+(ii) minimize the number of predicted entities that are not going to be modi ed.
+
+Hassan and Holt's Assumptions:
+
+fi
+
+f
+
+fi
+
+a
+
+a
+
+a
+
+Symmetric Suggestions: Changes in entity E suggest modi ications in F, and vice versa.
+Single Entity Suggestions: Predictions are based on one known entity at a time.
+Query the Tool First: Maintainers consult heuristics before expert opinions.
+
+Heuristics for Ch nge Prop g tion
+Hassan and Holt studied the performance of four heuristics: DEV, HIS, CUD, and FIL
+using the development replay (DR) framework
+
+Entity Information:
+Tracks co-changes (historical (HIS)) or
+CUD relations (call, use, de ine).
+Considers code layout (subsystems,
+iles, classes).
+
+Developer Information:
+Propagation based on the expertise of developers.
+Process Information:
+Focus on entities frequently or recently modi ied.
+
+f
+
+a
+
+a
+
+f
+
+Textual Information:
+Uses naming similarities to identify related entities.
+
+a
+
+f
+
+Change Propagation
+
+

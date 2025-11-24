@@ -1,0 +1,1600 @@
+Software Evolution and Maintenance
+A Practitioner’s Approach
+
+Chapter 5
+Legacy Information Systems
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+Outline of the Chapter
+5.1 General Idea
+5.2 Wrapping
+5.2.1 Types of Wrapping
+5.2.2 Levels of Encapsulation
+5.2.3 Constructing a Wrapper
+5.2.4 Adapting a Program for Wrapper
+5.3 Migration
+5.4 Migration Planning
+
+5.5 Migration Methods
+5.5.1 Cold Turkey
+5.5.2 Database First
+5.5.3 Database Last
+5.5.4 Composite Database
+5.5.5 Chicken Little
+5.5.6 Butterfly
+5.5.7 Iterative
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.1 General Idea
+•
+
+In Oxford English Dictionary (OED) the word “legacy” is defined as
+– A sum of money, or a specified article, given to another by will; anything handed
+down by an ancestor or predecessor.
+
+•
+
+Brodie and Stonebraker used the following definition to define legacy systems:
+– any information system that significantly resists modification and evolution to meet
+new and constantly changing business requirements.
+
+•
+
+Bennett used the following definition to define legacy systems:
+– Legacy software systems are large software systems that we don’t know how to
+cope with but that are vital to our organization.
+
+•
+
+Supporting the definitions are a set of acceptable features of a legacy system:
+• large with millions of lines of code.
+• geriatric, often more than 10 years old.
+• written in obsolete programming languages.
+• lack of consistent documentation.
+• poor management of data, often based on flat-file structures.
+• degraded structure following years of modifications.
+• very difficult, if not impossible, to expand.
+• runs on old processor.
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5. 1General Idea
+There are several categories of solutions for legacy information
+system (LIS).
+• These solutions generally fall into six categories as follows:
+•
+
+• Freeze.
+• Outsource.
+• Carry on maintenance.
+• Discard and redevelop.
+• Wrap.
+• Migrate.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2 Wrapping
+In 1988, Dietrich et al. first introduced the concept of a “wrapper”
+at IBM.
+• Wrapping means encapsulating the legacy component with a new
+software layer that provides a new interface and hides the
+complexity of the old component.
+• The encapsulation layer can communicate with the legacy
+component through sockets, remote procedure calls (RPCs), or
+predefined application program interfaces (API).
+• The wrapped component is viewed similar to a remote server; it
+provides some service required by a client that does not know the
+implementation details of the server.
+•
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2 Wrapping
+By means of a message passing mechanism, a wrapper connects
+to the clients.
+• On the input front, the wrapper accepts requests, restructures
+them, and invokes the target object with the restructured
+arguments.
+• On the output front, the wrapper captures outputs from the
+wrapped entity, restructures the outputs, and pushes them to the
+requesting entity.
+• However, this technique does not solve the problems with legacy
+systems.
+•
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.1 Types of Wrapping
+•
+
+Orfali et al. classified wrappers into four categories:
+– Database wrappers.
+– System service wrappers.
+– Application wrappers.
+– Function wrappers.
+
+Database wrappers:
+•
+•
+•
+
+•
+•
+
+Database wrappers can be further classified into forward wrappers (f-wrappers)
+and backward wrappers (b-wrappers)
+The forward wrappers-approach, depicted in Figure 5.1, shows the process of
+adding a new component to a legacy system.
+Therefore, by means of translation service involving both legacy data and
+queries, the wrapper integrates the new component with the legacy system.
+The backward wrappers-approach has been depicted in Figure 5.2
+In this approach, data are migrated first then new components are developed
+that use the new database; the legacy components access the new data via
+wrappers.
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.1 Types of Wrapping
+
+Figure 5.1Forward wrapper © ACM, 2006
+
+Figure 5.2 Backward wrapper © ACM, 2006
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.1 Types of Wrapping
+System service wrappers:
+•
+•
+
+This kind of wrappers support customized access to commonly used system
+services, namely, routing, sorting, and printing.
+A client program may access those services without knowing their interfaces.
+
+Application wrappers:
+•
+•
+
+This kind of wrappers encapsulate online transactions or batch processes.
+These wrappers enable new clients to include legacy components as objects and
+invoke those objects to produce reports or update files.
+
+Function wrappers:
+•
+
+•
+•
+
+This kind of wrappers provide an interface to call functions in a wrapped entity.
+In this mechanism, only certain parts of a program – and not the full program –
+are invoked from the client applications.
+Therefore, limited access is provided by function wrappers.
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.2 Levels of Encapsulation
+•
+
+Sneed classified five levels of granularity: procedures are at the
+lowest level and processes are at the highest level.
+
+Figure 5.3 Levels of encapsulation ©IEEE, 1996
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.2 Levels of Encapsulation
+Process level:
+A job is started on the server which accepts input data, accesses
+databases, and produces output data.
+• The input data and output data are contained in files.
+• The input files are created by the client program and are
+transferred to the server by the wrapper by means of a standard
+file transfer utility.
+• Upon the completion of the job, the wrapper takes over the output
+files to be forwarded to the client.
+•
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.2 Levels of Encapsulation
+Transaction level:
+On the server, a virtual terminal is created that sends the terminal
+input map and receives the terminal output map.
+• The wrapper is a program which simulates the user terminal.
+• This type transaction level wrapping has become simple because
+modern transaction processors:
+•
+
+(i) take care of host-to-client communication.
+(ii) perform restart and recovery task, exception handling, rollback, and
+commit.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.2 Levels of Encapsulation
+Program level:
+• Via APIs, batch programs are called in a wrapper.
+• The wrapper substitutes program inputs with data inputs coming
+in from the client application.
+• In addition, outputs from the wrapped program are captured,
+reformatted, and sent to the client.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.2 Levels of Encapsulation
+Module level:
+• Legacy modules are executed using their standard interfaces.
+• A significant deviation from the usual calls is that parameters are
+passed by value – and not by references.
+• Therefore, first, the wrapper buffers the received values in its own
+address space.
+• Next, the buffered values are passed on to the invoked module.
+• Finally, the output values received from the invoked module are
+passed on to the client.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.2 Levels of Encapsulation
+Procedure level:
+• A procedure internal to the system is invoked as if the procedure
+was compiled separately.
+• As a result, this special treatment of an internal procedure
+requires:
+(i) constructing a parameter interface; and
+(ii) if needed, initializing global variables before calling the
+procedure.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.3 Constructing a Wrapper
+•
+
+A legacy system is wrapped in three steps as follows:
+– A wrapper is constructed.
+– The target program is adapted.
+– The interactions between the target program and the wrapper are verified.
+
+•
+
+A wrapper, is a program which receives input messages from the
+client program, transforms the inputs into an internal
+representation, and invokes the target system with the newly
+formatted messages.
+
+•
+
+The wrapper intercepts the outputs produced by the target system,
+transforms them into a format understood by the client, and
+transfers them to the client.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.3 Constructing a Wrapper
+•
+•
+
+Conceptually, a wrapper comprises two interfaces and three event driven
+modules as shown in Figure 5.4.
+The two interfaces are an internal interface and an external interface, and the
+three modules are message handler, interface converter, and I/O-emulator.
+
+Figure 5.4 Modules of a wrapping framework
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.3 Constructing a Wrapper
+External interface:
+•
+•
+•
+•
+
+The interface of the wrapper that is accessed by the clients is called the external
+interface.
+The wrapper and its client generally communicate by passing messages.
+Messages normally comprise a header and a body.
+The header of a message contains control information:
+(i) identity of the sender.
+(ii) a time stamp.
+(iii) the transaction code.
+(iv) target program type.
+(v) the identity of the transaction, program, procedure, or module to be invoked.
+
+•
+•
+
+The message body contains the input arguments. Similarly, the message body
+contains the output values in an output message.
+The values contained in a message are normally ASCII strings separated by a
+delimiter, say, a back slash ( “\” ).
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.3 Constructing a Wrapper
+Internal interface:
+•
+•
+•
+
+•
+
+•
+•
+
+A wrapper’s internal interface is the interface visible to the server.
+The internal interface is dependent upon the language and type of the wrapped
+entity.
+For example, if the wrapped entity is a job, the internal interface of the wrapper
+is a job control procedure, and the job control procedure is interpreted to
+execute the job.
+On the other hand, if the encapsulated entity is a program, procedure,
+transaction, or a module, the internal interface is alist of parameters in the
+language of the encapsulated software.
+Therefore, the internal interface is extracted from the source code of the
+encapsulated software.
+The parameters of the internal interface are specified in terms of the target
+language, thereby necessitating a translation from the input ASCII strings to the
+target types.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.3 Constructing a Wrapper
+Message handler:
+•
+•
+
+The message handler buffers input and output messages, because requests from
+the client may occasionally arrive at a faster rate than they can be consumed.
+Similarly, outputs from the wrapped program may be produced at a faster rate
+than they can be sent to the client.
+
+Interface converter:
+•
+
+This entity converts the internal interface into the external interface and viceversa.
+
+I/O-emulator:
+•
+•
+
+•
+
+I/O-emulator intercepts the inputs to and outputs from the wrapped entity.
+Upon intercepting an input, the emulator fills the input buffer with the values of
+the parameters of the external interface.
+On the other hand, when it intercepts an output value, the emulator copies the
+contents of the output buffer into the parameter space of the external interface.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.4 Adapting a Program for Wrapper
+•
+•
+•
+
+A wrapped program is modified to some extent, and it is expected that the
+modified programs continue to operate in the normal mode.
+Programs are adapted with tools, rather than manually.
+Sneed recommended four types of tools:
+– Transaction wrapper.
+– Program wrapper.
+– Module wrapper.
+– Procedure wrapper.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.2.5 Screen Scraping
+•
+•
+
+•
+•
+•
+•
+
+Screen scraping is a common form of wrapping in which modern, say,
+graphical, interfaces replace text-based interfaces.
+The new interface can be a GUI (graphical user interface) or even a web-based
+HTML (hypertext markup language) client.
+Tools, such as Verastream from Attachmate, automatically generate the new
+screens.
+Screen scraping simply provides a straightforward way to continue to use a
+legacy system via a graphical user interface.
+Screen scraping is a short term solution to a larger problem.
+Many serious issues are not addressed by simply mounting a GUI on a legacy
+system. For example, screen scraping:
+(i) does not evolve to support new functions.
+(ii) incurs high maintenance cost.
+(iii) ignores the problem of overloading.
+Overloading is simply defined as the ability of one function to perform different tasks.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.3 Migration
+Migration of LIS is the best alternative, when wrapping is
+unsuitable and redevelopment is not acceptable due to substantial
+risk.
+• However, it is a very complex process typically lasting five to ten
+years.
+• It offers better system understanding, easier maintenance, reduced
+cost, and more flexibility to meet future business requirements.
+• Migration involves changes, often including restructuring the
+system, enhancing the functionality, or modifying the attributes.
+• It retains the basic functionality of the existing system.
+• We will discuss general guidelines for migrating a legacy system
+to a new target system.
+• A brief overview of the migration steps is explained next.
+•
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.3 Migration
+•
+•
+
+•
+
+LIS migration involves creation of a modern database from the legacy database
+and adaptation of the application program components accordingly.
+A database has two main components: schema of the database and data stored
+in the database.
+Therefore, in general, migration comprises three main steps:
+(i) conversion of the existing schema to a target schema;
+(ii) conversion of data; and
+(iii) conversion of program.
+
+Schema conversion:
+•
+•
+
+•
+
+Schema conversion means translating the legacy database schema into an
+equivalent database structure expressed in the new technology.
+The transformation of source schema to a target schema is made up of two
+processes.
+The first one is called DBRE and it aims to recover the conceptual schema that
+express the semantics of the source data structure, which is discussed in Section
+4.8.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.3 Migration
+•
+
+The second process is straightforward and it derives the target physical schema
+from this conceptual schema:
+(i) an equivalent logical schema is obtained from the conceptual schema by
+means of transformations; and
+(ii) a physical schema is obtained from the logical schema by means of
+transformations.
+
+Data Conversion:
+•
+•
+•
+•
+•
+
+Data conversion means movement of the data instances from the legacy
+database to the target database.
+Data conversion requires three steps: extract, transform, and load (ETL).
+First, extract data from the legacy store. Second, transform the extracted data
+so that their structures match the format.
+In addition, perform data cleaning (a.k.a. scrubbing or cleansing) to fix or
+discard data that do not fit the target database.
+Finally, load the transformed data in the target database.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.3 Migration
+Program Conversion:
+•
+
+•
+•
+
+In the context of LIS migration, program conversion means modifying a
+program to access the migrated database instead of the legacy data.
+The conversion process leaves the functionalities of the program unchanged.
+Program conversion depends upon the rules that are used in transforming the
+legacy schema into the target schema.
+
+Testing and Functionality:
+•
+•
+•
+•
+
+It is important to ensure that the outputs of the target system are consistent with
+those of the LIS.
+Therefore, new functionality is not to be introduced into the target system in a
+migration project.
+If both the LIS and the target system have the same functionality, it is easier to
+verify their outputs for compliance.
+However, to justify the project expense and the risk, in practice, migration
+projects often add new functionalities.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.3 Migration
+Cut over or Roll over:
+• The event of cutting over to the new system from the old one is required to
+cause minimal disruption to the business process.
+• There are three kinds of transition strategies.
+Cut-and-Run: The simplest transition strategy is to switch off the legacy system
+and turn on the new system.
+
+Phased Interoperability: To reduce risks, cut over is gradually performed in
+incremental steps.
+Parallel Operation: The target system and the LIS operate at the same time. Once
+the new system is considered to be reliable, the LIS is taken off service.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.4 Migration Planning
+The activity of planning for migration comprises thirteen steps:
+Step 1: Perform portfolio analysis.
+Step 2: Identify the stakeholders.
+Step 3: Understand the requirements.
+Step 4: Create a business case.
+Step 5: Make a go or no-go decision.
+Step 6: Understand the LIS.
+Step 7: Understand the target technology.
+Step 8: Evaluate the available technologies.
+Step 9: Define the target architecture.
+Step 10: Define a strategy.
+Step 11: Reconcile the strategy with the needs of the stakeholder.
+Step 12: Determine the resources required.
+Step 13: Evaluate the feasibility of the strategy.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.4 Migration Planning
+Step 1: Perform portfolio analysis.
+Portfolio analysis establishes measures of technical quality and business value
+for a set of software systems.
+• It is represented on a chi-square chart as shown in Figure 5.5.
+Quadrant 1: A system with low technical quality and low business value is a
+prime candidate for substitution with a commercial product, if one is available.
+These systems might be in use in the non-core sector of the organization.
+Quadrant 2: A system with high technical quality but low business value need
+not be replaced, migrated, or restructured.
+•
+
+Quadrant 3: A system with high technical
+quality and high business value should be
+actively evolved.
+Quadrant 4: A system with low technical
+quality but high business value is a good
+candidate for redevelopment or migration to a
+new system.
+
+Figure 5.5 Portfolio analysis
+chi-square chart
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.4 Migration Planning
+Step 2: Identify the stakeholders.
+Stakeholders are the people or organizations that influence a
+system’s behavior, or those who are impacted by the system.
+• Stakeholders typically include architects, developers, maintainers,
+managers, customers, and end users.
+• The stakeholders ultimately judge the outcome and impact of the
+migration project.
+• Each of the stakeholders bring their own perspectives to the table.
+• Therefore, it is necessary to obtain their agreement and support.
+•
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.4 Migration Planning
+Step 3: Understand the requirements.
+•
+•
+
+•
+
+•
+
+Requirements are a description of the needs and desires of stakeholders that a
+system is expected to implement:
+There are two challenges in defining requirements.
+– First, ensure that the right requirements are captured.
+– Second, express the requirements in such a way that the stakeholders can
+easily review and confirm their correctness.
+Therefore, it is essential to have an unambiguous representation of the
+requirements and have it made available in a centralized database so that all the
+stakeholders can review and validate the requirements.
+Requirements can come from:
+– Legacy Information System
+– Business Process Reengineering
+– Stakeholders
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.4 Migration Planning
+Step 4: Create a business case.
+•
+
+•
+
+Based on a business case, executive management can decide whether or not the
+migration project will increase quality, reduce maintenance costs, and be
+financially viable.
+In general, a good business case provides the following information about the
+migration project:
+– Problem statement; Solution; Risks; and Benefits.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.4 Migration Planning
+Step 5: Make a go or no-go decision.
+•
+•
+
+Once a business case has been defined, it is reviewed by the stakeholders to
+reach an agreement.
+If the business case is unsatisfactory then the legacy migration project is
+terminated at this step.
+
+Step 6: Understand the LIS.
+•
+•
+
+Understanding the LIS is essential to the success of any migration project.
+Techniques available to meet this challenge include program comprehension
+and reverse engineering.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.4 Migration Planning
+Step 7: Understand the target technology.
+•
+•
+•
+
+This activity can proceed in parallel with the activity of Step 6.
+It is important to understand the technologies that can be used in the migration
+effort and the technologies that have been used in the legacy system.
+In general, four types of technologies are of interest in the migration effort:
+1. Languages and DBMS available, including COBOL, Java, eXtensible
+Markup Language (XML), and modern DBMS.
+2. Distributed transaction models, including distributed communication and
+transaction technologies such as remote procedure calls (RPC) or message
+queues.
+3. Middleware technologies and standards that may be used to develop an
+information system, including message-oriented middleware (MOM), XML
+Messaging, Java 2 Enterprise Edition (J2EE), and Enterprise JavaBeans
+(EJB).
+4. Tools that are available to assist in migration of the LIS to the new
+information system.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.4 Migration Planning
+Step 8: Evaluate the available technologies.
+•
+•
+•
+
+One must compare and contrast all the available technologies to evaluate their
+capabilities.
+If the capabilities overlap, then we must appraise these technologies to
+understand the quality of service they will provide in the migration process.
+To formulate the eventual architecture and design of the system, those
+evaluations are performed.
+
+Step 9: Define the target architecture.
+•
+•
+•
+•
+•
+
+The target architecture is the desired architecture of the new system.
+It models the stakeholders’ vision of the new system.
+This usually requires descriptions using different views with different levels of
+granularity.
+The target architecture is likely to evolve during the migration process.
+Therefore, the target architecture is continually reevaluated and updated during
+the migration process.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.4 Migration Planning
+Step 10: Define a strategy.
+•
+•
+•
+
+•
+
+•
+•
+
+A strategy defines the overall process of transforming the LIS to the new
+system.
+This includes migration methodology, that is schema conversion, data
+conversion, and program conversion, testing, and cut over.
+For a mission-critical legacy system, deploying the new system all at once is a
+risky procedure, therefore a legacy system is evolved incrementally to the new
+system.
+During the migration effort, many things can change: user requirements may
+change, additional knowledge about the system may be acquired, and the
+technology may change.
+Those changes must be accommodated by the migration effort.
+While accommodating those changes, a migration strategy need to minimize
+risk, minimize development and deployment costs, support an aggressive but
+reliable schedule, and meet system quality expectations.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.4 Migration Planning
+Step 11: Reconcile the strategy with the needs of the stakeholder.
+•
+•
+•
+•
+
+A consensus needs to be developed among stakeholders before implementing the
+migration plan.
+The migration strategy developed in the previous step must be reconciled with
+stakeholder needs.
+Therefore, this step includes briefing the stakeholders about the approach,
+reviewing the target architecture, and the strategy.
+The entire group evaluates the strategy and provides input for the final consensus
+profile.
+
+Step 12: Determine the resources required.
+•
+•
+•
+•
+
+We estimate the resource need including cost of implementing the project.
+One can use the widely used cost estimation model called Constructive Cost
+Model II (COCOMO II).
+COCOMO II addresses nonsequential process models, reengineering work, and
+reuse-driven approach.
+The COCOMO II model provides estimates of effort, schedule by phases, and
+staffing by phases and activities.
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.4 Migration Planning
+Step 13: Evaluate the feasibility of the strategy.
+•
+
+•
+•
+•
+•
+
+After executing the first 12 steps, the management should have an
+understanding of the system under migration, the available technology options,
+a target architecture, migration strategy, cost of migration, and a schedule to
+effect migration.
+Based on available information, management determines whether or not the
+migration strategy is feasible.
+If the strategy is found to be viable, the migration plan is finalized.
+On the other hand, if it is unacceptable, a detailed report is produced.
+Based on the reasons stated in the report, one may revise the migration strategy
+until:
+(i) a feasible approach can be identified, or
+(ii) the migration strategy is determined to be infeasible and the project is terminated.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5 Migration Methods
+•
+•
+
+No single approach can be applied to all kinds of legacy systems, because they
+vary in their scale, complexity, and risks of failure while migrating.
+The seven approaches are as follows:
+– Cold turkey
+– Database first
+– Database last
+– Composite database
+– Chicken little
+– Butterfly
+– Iterative
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.1 Cold Turkey
+The Cold turkey strategy is also referred to as the Big Bang
+approach.
+• It involves redesigning and recoding the LIS from the very
+beginning using a new execution platform, modern software
+architecture, and new tools and databases.
+• For this approach to be adopted, one must guarantee that the
+renovated system will include many new features in addition to
+the functionality provided by the original legacy system.
+• The risk of failure is increased due to the complexity of migration.
+• This approach can be adopted, if a legacy system has stable, welldefined functionality and is small in size.
+•
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.2 Database First
+•
+•
+•
+•
+
+The Database first approach is also known as forward migration method.
+This method first migrates the database, including the data, to a modern DBMS,
+and then gradually migrates the legacy application programs and interfaces.
+The LIS simultaneously operates with the new system via a forward gateway,
+while interfaces and legacy applications are being reengineered.
+Implemented as a software module, a gateway mediates among operational
+software components.
+
+• This enables the LIS applications
+to access the database on the target
+side as shown in Figure 5.6.
+• The forward gateway translates
+legacy application calls to target
+calls.
+• Similarly, outputs of the
+reengineered database are
+translated for use by the legacy
+system.
+
+Figure 5.6 Database first approach ©IEEE, 1999
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.2 Database First
+•
+
+•
+•
+
+A key benefit of the database-first approach is that upon the completion of
+migration of the legacy data, one can start receiving productivity benefits by
+accessing the data.
+The legacy system can operate concurrently with those applications and
+interfaces that have been migrated to the new system.
+This approach has three major drawbacks.
+– First, the approach is only applicable to a completely decomposable legacy system,
+where a clean interface to the legacy database exists.
+– Second, the new database structure must be defined before migration can begin.
+– Third, it is difficult to construct the forward gateway.
+
+•
+
+•
+
+•
+
+An information system is said to be fully decomposable if the user and system
+interfaces, applications, and databases are considered to be distinct components
+connected by clearly defined interfaces.
+In a semidecomposable information system, only the user and the system
+interfaces are separate components; the database service and applications are
+inseparable.
+A nondecomposable information system is one where no functional
+components can be separated
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.3 Database Last
+•
+•
+•
+•
+
+It is suitable only for a fully decomposable LIS.
+In this approach, legacy applications are incrementally migrated to the target
+platform, but the legacy database stays on the original platform.
+Migration of the database is done last.
+Similar to the database-first approach, interoperability of both, the information
+systems is supported by means of a gateway.
+
+• Target applications access the
+LIS database via a reverse
+gateway.
+
+• As illustrated in Figure, the
+reverse gateway translates calls
+from the new applications and
+redirects them to the legacy
+database.
+Figure 5.7 Database last approach ©IEEE, 1999
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.3 Database Last
+There are two main issues with the Database last approach:
+– First, mapping from the schema of the target database to the legacy
+database can be slow, thereby impacting new applications.
+– Second, several useful features of relational databases, namely, triggers,
+integrity, and constraints may not be exploited by the new applications,
+because those features might not be present in the legacy database.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.4 Composite Database
+•
+•
+
+•
+
+The Composite database approach is applicable to fully decomposable,
+semidecomposable, and non-decomposable legacy information systems.
+In the composite database approach, the target information system is run in
+parallel with the legacy system during the migration process.
+In the beginning, the target system is a small one, but it grows in size as
+migration continues.
+
+While migration is
+continuing, as shown in
+Figure 5.8, the two
+systems form a
+composite information
+system, employing a
+combination of forward
+and reverse gateways.
+Figure 5.8 Composite database approach ©IEEE, 1999
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.4 Composite Database
+•
+•
+
+•
+•
+
+•
+
+•
+
+Upon completion of the migration process, all the functionality of the old
+system are performed by the new system.
+In this approach, data may be duplicated across both the databases: legacy and
+target.
+A transaction co-coordinator is employed to maintain data integrity.
+The co-coordinator intercepts update requests from both target and legacy
+applications, and processes the requests to determine whether or not the
+requests refer to data replicated in both the databases.
+If replicated data are referred to, the update is propagated to both the databases
+using a two-phase commit protocol.
+As done in the Database-first and Database-last approaches, the composite
+database approach does not require a one-shot large migration of legacy data.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.5 Chicken Little
+The Chicken little strategy refines the composite database
+strategy, by proposing migration solutions for fully
+decomposable, semidecomposable, and nondecomposable legacy
+systems with different kinds of gateways.
+• The differences between those gateways are based upon:
+(i) the locations of the gateways in the system; and
+(ii) the degree of functionality of the gateways.
+• For a fully decomposed LIS, a database gateway is located
+between the database service and the application modules.
+• The said database gateway can be either a forward gateway or a
+reverse gateway.
+• Both the forward gateway and reverse gateway are also known as
+database gateways.
+• An application gateway is used for a semidecomposable LIS.
+•
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.5 Chicken Little
+•
+•
+
+The application gateway has been illustrated in Figure 5.9, and it is located
+between user and system interfaces and the legacy application.
+It is called application gateway because it encapsulates from the applications
+down, from the perspective of interfaces.
+
+Figure 5.9 Application gateway ©IEEE, 1999
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.5 Chicken Little
+•
+•
+•
+
+For nondecomposable systems an information systems gateway is located
+between user and other information systems and LIS.
+This gateway has been illustrated in the Figure 5.10.
+The entire functionality of the legacy system is encapsulated in an information
+system gateway, whereas an application gateway encapsulates part of the
+legacy system, namely, only from application module down.
+
+Figure 5.10 information system gateway ©IEEE, 1999
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.5 Chicken Little
+•
+•
+•
+•
+
+The Chicken little methodology proposes an 11-step generic strategy, as listed
+on Table 5.2, for migration projects.
+The flow of steps is for eachincrement to be migrated, so the entire flow is
+repeated for each increment.
+In this methodology, using gateways, the legacy system and the target
+information system run concurrently during the entire process of migration.
+In the Chicken little methodology, data is stored in both the migrating legacy
+system and the evolving target system.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.6 Butterfly
+•
+•
+
+•
+•
+•
+
+The Butterfly methodology does not require simultaneous accesses of both the
+legacy database system and the target database system.
+The target system is not operated in the production mode, at the time of
+reengineering the legacy system.
+In other words, the old system being reengineered remains operational during
+the migration stage.
+During the migration process, live data are not simultaneously stored in both
+the new system and the legacy system.
+For data migration, the Butterfly methodology introduces the following
+concepts:
+– Sample DataStore, Legacy SampleData, and Target SampleData;
+– TempStore;
+– Data-Access-Allocator;
+– Data-Transformer;
+– Termination-Condition and Threshold Value.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.6 Butterfly
+•
+•
+•
+•
+•
+•
+•
+
+•
+
+A representative subset of the legacy database is held in Legacy SampleData
+The Target SampleData is derived from the Legacy SampleData.
+Based on the data model of the target system, Sample DataStore stores the
+Target SampleData.
+The Sample DataStore supports the initial development and testing of all
+components.
+In order to migrate legacy data, the methodology uses a sequence of temporary
+datastores called TempStores (TS).
+During the migration process, the TempStores hold the results of
+manipulations on the legacy data.
+When migration of legacy data begins, the Data-Access-Allocator (DAA)
+directs those manipulations, and the results are stored/retrieved by the DAA in
+the most recent TempStore.
+To migrate the legacy data and the TempStores data to the target system, the
+methodology uses a Data-Transformer called Chrysaliser.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.6 Butterfly
+•
+
+•
+•
+•
+
+•
+
+To determine whether or not the new system is ready to be used, the concepts
+of Termination-Condition and Threshold Value are introduced.
+The Threshold Value is represented by a pre-determined value ε.
+Basically, ε represents the acceptable quantity of data remaining in the current
+TS.
+The condition size(TS) ≤ ε implies that the time required to migrate the data is
+negligibly small to shutdown the legacy system without inflicting much
+disturbance on the core business.
+As shown in Table 5.3, migration of a legacy system is organized into six major
+steps, also called phases.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.6 Butterfly
+Phase 1: Readiness for migration
+•
+
+Considered to be important issues in the Butterfly methodology are user’s
+requirements and determination of the target system. Table 5.4 lists the main
+activities in the preparation phase.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.6 Butterfly
+Phase 2: Comprehend the semantics of the system to be migrated and develop
+schema(s) for the target database
+• Table 5.5 shows the activities performed in this phase.
+• The migration requirements are finalized in activity 2.5.
+• However, not all requirements can be identified until the legacy system is fully
+understood.
+• In this phase, the Data-Access-Allocator (DAA) tool is developed to redirectall
+manipulations of legacy data and data stored in TempStores.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.6 Butterfly
+Phase 3: Based upon the Target SampleData, construct a Sample DataStore
+• The activities of Phase 3 are listed on Table 5.6.
+• Developing the Chrysaliser and determining the legacy SampleData are the
+main tasks in Phase 3.
+• The Chrysaliser derives the Sample DataStore from the SampleData, and the
+Sample DataStore is used to test and develop the target system.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.6 Butterfly
+Phase 4: Except the data, migrate the components of the legacy system
+• The activities in Phase 4 are listed on Table 5.7.
+• In this phase, forward software engineering principles and methods are used in the
+migration process.
+• Constructed in Phase 2, the Sample DataStore is used in supporting the “designdevelop-test” cycle for new target components.
+• The interactions among the target system’s components are verified in activity 4.4.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.6 Butterfly
+Phase 5: Gradually migrate the legacy data
+• Table 5.8 lists the activities of Phase 5.
+• Migration of legacy data is performed in Phase 5, and it is central to the
+Butterfly methodology. Legacy data are incrementally migrated by using
+TempStores, the Chrysaliser, and the Data-Access-Allocator (DAA).
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.6 Butterfly
+Phase 5: Gradually migrate the legacy data (Cont’d…)
+• Once migration of legacy data is started, no changes are allowed
+to be performed on the legacy data store.
+• The Data-Access-Allocator (DAA) redirects manipulation
+operations of legacy data, and the results are saved in a series of
+TempStore(s) (TS).
+• When a legacy application needs to access data, the DAA
+correctly decides which source – the correct TempStore or the
+legacy data – to retrieve the data from.
+• By means of a Data-Transformer, called Chrysaliser, data are
+migrated to the new system from the legacy store and the series of
+TempStores.
+• A series of temporary stores (TS’s) are used by the Chrysaliser in
+the data migration process.
+• During the migration process in this methodology, the legacy
+system is not inaccessible for a significant amount of time.
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.6 Butterfly
+Phase 5: Gradually migrate the legacy data (Cont’d…)
+•
+
+Figure 5.11 and DAA working together serve as a data migration
+engine.
+
+Figure 5.11 Migrating TempStore in
+Butterfly methodology ©IEEE, 1999
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.6 Butterfly
+Phase 6: Roll over to the new system
+• Roll over to the new system is the final phase of the Butterfly methodology.
+• After the new system is built and the legacy data are migrated, the new system
+is ready for operation.
+Drawback of Butterfly Methodology
+• The main drawback of the Butterfly methodology is that the legacy database is
+used for reading only, whereas modifications are placed in a separate,
+temporary database.
+• Consequently, when there is a need to access some data, the system reads both
+the databases – the old database nd the target database – plus the temporary
+database.
+• As a result, there is an increase in the time to access the required data.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.7 Iterative
+The iterative method implies that one component at a time is
+reengineered.
+• Thus, the legacy system gradually evolves over a period of time.
+• The methodology enables simultaneous operations of the
+reengineered system and the components of the legacy system.
+• The components of the reengineered system access either the
+legacy database or the new database, based upon the location of
+the actual data to be accessed.
+•
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.7 Iterative
+•
+
+An iterative methodology partitions legacy data into two
+categories:
+Primary data: Primary data are those data that are essential to an
+application’s business functions.
+Residual data: These data are not required to carry out the application’s
+business functions, but are used by the legacy system.
+
+•
+
+Primary data comprise two kinds of data:
+– Conceptual data: These data describe concepts specific to the
+application’s domain.
+– Structural data: These data are needed to organize and support data
+structures that are used to correctly access the conceptual data.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.7 Iterative
+Data in the residual category comprise those data in the legacy
+store which will eventually be discarded.
+• The residual data are grouped into four categories:
+– control data.
+– redundant structural data.
+– semantically redundant data.
+– computationally redundant data.
+•
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.7 Iterative
+•
+
+Each Component may be in one of the following states during the
+reengineering process:
+– Legacy: This state means that the component has not been
+reengineered, which implies that it continues to be a legacy
+component.
+– Restored: The structure of the component remains the same
+and it performs the same functions, but the component
+accesses data through the new Data Banker.
+– Reengineered: The component has already been modified, and
+a desired level of quality has been achieved.
+– New: The component was not part of the legacy system and
+has been newly added in order to introduce new functions.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.7 Iterative
+System Architecture
+While reengineering is in progress, Figure 5.12 shows the system architecture of
+gradual evolution of a legacy system.
+
+Figure 5.12 The system architecture methodology
+during reemgineering ©IEEE, 2003
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.7 Iterative
+System Architecture (Cont’d…)
+•
+•
+•
+
+The “Legacy DB manager” manages all accesses of the “Legacy DB” by the
+legacy components.
+The database with the new structure is represented by “New DB.”
+NewDB includes:
+(i) all primary data for those functions which have been added to the new system in
+the process of reengineering;
+(ii) all primary data which have been migrated from the legacy DB.
+
+•
+•
+•
+•
+
+“Residual DB” stores the residual data from the legacy database, and “Residual
+DB Manager” is the corresponding data manager.
+The “Residual DB Manager” may be the DBMS of the legacy software system
+or the new database.
+The “Reengineered Components” and the “Restored Components” get data
+from “Data Banker.”
+By means of “Meta Data,” “Data Banker” knows whether or not the required
+data is available in “New DB,” “Residual DB,” or “Legacy DB.”
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.7 Iterative
+System Architecture (Cont’d…)
+•
+•
+
+•
+•
+
+•
+•
+•
+•
+
+If the “Data Banker” needs to access the “New DB,” metadata are used to
+retrieve their physical locations.
+Next, “Data Banker” uses the knowledge of the physical data locations to
+obtain data from the “New DB Manager.”
+In the aforementioned two cases, “Data Banker” routes the requests for data to
+the “Data Locator.”
+The “Data Locator” interprets the information that the “Data Banker” has
+extracted from metadata and gets the required data from the “Residual DB
+Manager” or the “Legacy DB Manager.”
+Both the “Data Banker” and “Metadata” will continue to exist beyond the
+reengineering effort.
+The structure of “New DB” is known to “Metadata” and the services of the
+“New DB Manager” are known to “Data Banker.”
+Therefore, if there are changes to the physical structure of the “New DB”, only
+the contents of “Metadata” need to be modified.
+On the other hand, changes to the “New DB Manager” requires changes to the
+“Data Banker” alone.
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.7 Iterative
+
+Migration Process
+Figure 5.13 The iterative migration process ©IEEE, 2003
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.7 Iterative
+
+Migration Process
+Analyze Legacy System:
+• All the change requests having an influence on a component to be reengineered
+are put aside until the component is reengineered.
+• Therefore, the system is partitioned into components so as to minimize their
+client-supplier relationships for two reasons:
+(i) to minimize the number of change requests (CRs) to be frozen.
+(ii) to minimize the time durations for which CRs are frozen.
+• Hence, in the partitioning process, identify the legacy system’s components
+which minimize the impact of reengineering the system.
+Classify Data:
+• Legacy data are classified as primary or residual data.
+• All the data in the Legacy DB, which are non-duplicated, are recorded in a
+table produced by means of data classification.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.7 Iterative
+Migration Process
+Redesign Database:
+• The data classified before are restructured in this phase:
+(i) to reorganize them in the new database for more effective and efficient access.
+(ii) to eliminate all the defects in the legacy database.
+(iii) to eliminate redundant data.
+
+While describing the mode of access for the new database, define the
+characteristics of the data to be stored in the database for Metadata.
+Restore Legacy Components:
+• The legacy system program is made compatible with the new database.
+• To make the program compatible, the codes involved in accessing the data are
+identified.
+• The identified code are replaced with new ones that call the Data Banker, rather
+than access data directly.
+•
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.7 Iterative
+Migration Process
+Migrate Data:
+• The legacy database is incrementally migrated to the new database, and nonessential data are put in the residual database.
+• A data migration tool can be developed for this purpose.
+• For each data file to be reengineered, the tool must read all the data it contains,
+copies them into the Residual DB or New DB based on the information
+contained in the Metadata.
+Reengineer Procedures:
+• Functions are reengineered in this phase, thereby evolving them from the
+restored state to the reengineered state.
+• Quality deficiencies of the procedures are analyzed and suitable remedies are
+introduced.
+• While reengineering, original components of the legacy system are reused as
+much as possible for two reasons:
+(i) reduce the cost of reengineering.
+(ii) preserve the skills that the maintainers have developed.
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.7 Iterative
+Migration Process
+Equivalence Tests:
+• Equivalence testing ensures that, after migration, the system continues to
+execute the same way as it did before.
+• Tests are conducted after procedure restoration and data migration.
+• In addition, this phase allows the test plan documentation to be updated.
+Empty Residual DB:
+• In iterative reengineering, some parts of the legacy database are migrated into
+the New DB, whereas the remaining parts move into the Residual DB.
+• While performing reengineering in an iterative manner, data to be no longer
+used are removed from the Residual DB.
+• Therefore, by the end of the reengineering process, the Residual DB will be
+completely empty.
+• Consequently, the Residual Data Manager and the Data Locator components
+can be withdrawn from the system.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+5.5.7 Iterative
+Migration Process
+Iteration:
+• The components of the legacy system are reengineered one at a time.
+• After reengineering a selected component, the process is repeated for another
+component and so on, until the entire system has been reengineered.
+Clean Metadata:
+• Upon completion of reengineering, Metadata only reflects the contents of the
+New DB.
+• Therefore, metadata concerning Residual DB are no more needed; hence, those
+are eliminated from Metadata.
+• In addition, all procedures in the Data Banker, which communicate with the
+Data Locator are removed.
+Reconstruct Documentation:
+• Documentation reengineering proceeds concurrently with the actual migration.
+• Up-to-date documentation can be performed throughout the reengineering
+process.
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+Summary
+
+General Idea
+Wrapping
+Migration
+Migration Planning
+Migration Methods
+
+Software Evolution and Maintenance (Chapter 5: Legacy Information Systems)
+
+© Tripathy & Naik
+
+
