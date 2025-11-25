@@ -24,3 +24,4 @@ generated/
 userdata/
 CLAUDE.md
 notes/
+.claude/settings.local.json
