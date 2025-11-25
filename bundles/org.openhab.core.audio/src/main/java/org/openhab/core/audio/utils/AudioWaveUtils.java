@@ -33,10 +33,27 @@ import org.openhab.core.audio.AudioFormat;
 public class AudioWaveUtils {
 
     /**
-     * This "magic" packet marks the beginning of the read data
+     * Magic number (0x64617461 = "data" in ASCII) that marks the beginning of the PCM data chunk in WAV files.
      */
     private static final int DATA_MAGIC = 0x64617461;
 
+    /**
+     * Maximum number of 4-byte reads when searching for the data chunk marker.
+     * This limit (200 reads = 800 bytes) matches the javax.sound internal buffer size
+     * and prevents infinite loops on malformed WAV files.
+     */
+    private static final int MAX_FMT_SEARCH_ITERATIONS = 200;
+
+    /**
+     * Maximum bytes to mark for WAV format parsing. This value is used by the
+     * underlying AudioSystem.getAudioInputStream() from javax.sound.sampled.
+     */
+    private static final int WAV_FORMAT_MARK_LIMIT = 200;
+
+    /**
+     * Default fallback WAV audio format used when parsing fails.
+     * Format: PCM signed, 16-bit, 44.1kHz, mono, 705.6 kbps bitrate.
+     */
     private static final AudioFormat DEFAULT_WAVE_AUDIO_FORMAT = new AudioFormat(AudioFormat.CONTAINER_WAVE,
             AudioFormat.CODEC_PCM_SIGNED, false, 16, 705600, 44100L, 1);
 
@@ -49,7 +66,7 @@ public class AudioWaveUtils {
      */
     public static AudioFormat parseWavFormat(InputStream inputStream) throws IOException {
         try {
-            inputStream.mark(200); // arbitrary amount, also used by the underlying parsing package from Sun
+            inputStream.mark(WAV_FORMAT_MARK_LIMIT);
             javax.sound.sampled.AudioFormat format = AudioSystem.getAudioInputStream(inputStream).getFormat();
             Encoding javaSoundencoding = format.getEncoding();
             String codecPCMSignedOrUnsigned;
@@ -78,23 +95,23 @@ public class AudioWaveUtils {
 
     /**
      * Remove FMT block (WAV header) from a stream by consuming it until
-     * the magic packet signaling data. Limit to 200 readInt() (arbitrary value
-     * used in sun audio package).
+     * the magic packet signaling data.
      * If you don't remove/consume the FMT and pass the data to a player
      * as if it is a pure PCM stream, it could try to play it and will
-     * do a "click" noise at the beginning.
+     * produce a "click" noise at the beginning.
      *
      * @param data A wav container in an InputStream
-     * @throws IOException
+     * @throws IOException if an I/O error occurs while reading the stream
      */
     public static void removeFMT(InputStream data) throws IOException {
         DataInputStream dataInputStream = new DataInputStream(data);
         int nextInt = dataInputStream.readInt();
         int i = 0;
-        while (nextInt != DATA_MAGIC && i < 200) {
+        while (nextInt != DATA_MAGIC && i < MAX_FMT_SEARCH_ITERATIONS) {
             nextInt = dataInputStream.readInt();
             i++;
         }
+        // Read and discard the data chunk size (4 bytes)
         dataInputStream.readInt();
     }
 }

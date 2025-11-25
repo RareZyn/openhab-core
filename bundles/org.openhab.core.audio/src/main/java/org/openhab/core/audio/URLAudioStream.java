@@ -22,7 +22,6 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
-import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -66,37 +65,15 @@ public class URLAudioStream extends AudioStream implements ClonableAudioStream {
     private InputStream createInputStream() throws AudioException {
         final String filename = url.toLowerCase();
         final String extension = AudioStreamUtils.getExtension(filename);
+        Socket socket = null;
         try {
             URL streamUrl = new URI(url).toURL();
             switch (extension) {
                 case M3U_EXTENSION:
-                    try (Scanner scanner = new Scanner(streamUrl.openStream(), StandardCharsets.UTF_8.name())) {
-                        while (true) {
-                            String line = scanner.nextLine();
-                            if (!line.isEmpty() && !line.startsWith("#")) {
-                                url = line;
-                                break;
-                            }
-                        }
-                    } catch (NoSuchElementException e) {
-                        // we reached the end of the file, this exception is thus expected
-                    }
+                    url = parseM3UPlaylist(streamUrl);
                     break;
                 case PLS_EXTENSION:
-                    try (Scanner scanner = new Scanner(streamUrl.openStream(), StandardCharsets.UTF_8.name())) {
-                        while (true) {
-                            String line = scanner.nextLine();
-                            if (!line.isEmpty() && line.startsWith("File")) {
-                                final Matcher matcher = PLS_STREAM_PATTERN.matcher(line);
-                                if (matcher.find()) {
-                                    url = matcher.group(1);
-                                    break;
-                                }
-                            }
-                        }
-                    } catch (NoSuchElementException e) {
-                        // we reached the end of the file, this exception is thus expected
-                    }
+                    url = parsePLSPlaylist(streamUrl);
                     break;
                 default:
                     break;
@@ -107,7 +84,7 @@ public class URLAudioStream extends AudioStream implements ClonableAudioStream {
                 // Java does not parse non-standard headers used by SHOUTCast
                 int port = streamUrl.getPort() > 0 ? streamUrl.getPort() : 80;
                 // Manipulate User-Agent to receive a stream
-                Socket socket = new Socket(streamUrl.getHost(), port);
+                socket = new Socket(streamUrl.getHost(), port);
                 shoutCastSocket = socket;
 
                 OutputStream os = socket.getOutputStream();
@@ -123,11 +100,73 @@ public class URLAudioStream extends AudioStream implements ClonableAudioStream {
                 return connection.getInputStream();
             }
         } catch (MalformedURLException | URISyntaxException e) {
+            // Close socket if it was created but we're throwing an exception
+            closeSocketQuietly(socket);
             logger.error("URL '{}' is not a valid url: {}", url, e.getMessage(), e);
             throw new AudioException("URL not valid");
         } catch (IOException e) {
+            // Close socket if it was created but we're throwing an exception
+            closeSocketQuietly(socket);
             logger.error("Cannot set up stream '{}': {}", url, e.getMessage(), e);
             throw new AudioException("IO Error");
+        }
+    }
+
+    /**
+     * Parse M3U playlist and extract the first non-comment URL.
+     *
+     * @param playlistUrl URL of the M3U playlist
+     * @return The first valid stream URL found in the playlist
+     * @throws IOException if the playlist cannot be read
+     */
+    private String parseM3UPlaylist(URL playlistUrl) throws IOException {
+        try (Scanner scanner = new Scanner(playlistUrl.openStream(), StandardCharsets.UTF_8.name())) {
+            while (scanner.hasNextLine()) {
+                String line = scanner.nextLine();
+                if (!line.isEmpty() && !line.startsWith("#")) {
+                    return line;
+                }
+            }
+        }
+        // If no valid URL found, return original URL
+        return url;
+    }
+
+    /**
+     * Parse PLS playlist and extract the first File entry.
+     *
+     * @param playlistUrl URL of the PLS playlist
+     * @return The first valid stream URL found in the playlist
+     * @throws IOException if the playlist cannot be read
+     */
+    private String parsePLSPlaylist(URL playlistUrl) throws IOException {
+        try (Scanner scanner = new Scanner(playlistUrl.openStream(), StandardCharsets.UTF_8.name())) {
+            while (scanner.hasNextLine()) {
+                String line = scanner.nextLine();
+                if (!line.isEmpty() && line.startsWith("File")) {
+                    final Matcher matcher = PLS_STREAM_PATTERN.matcher(line);
+                    if (matcher.find()) {
+                        return matcher.group(1);
+                    }
+                }
+            }
+        }
+        // If no valid URL found, return original URL
+        return url;
+    }
+
+    /**
+     * Safely close a socket without throwing exceptions.
+     *
+     * @param socket The socket to close, may be null
+     */
+    private void closeSocketQuietly(@Nullable Socket socket) {
+        if (socket != null) {
+            try {
+                socket.close();
+            } catch (IOException e) {
+                logger.debug("Failed to close socket: {}", e.getMessage());
+            }
         }
     }
 
