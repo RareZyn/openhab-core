@@ -107,7 +107,27 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * This class acts as a REST resource for rules.
+ * REST resource for managing automation rules in openHAB.
+ *
+ * <p>
+ * This resource provides comprehensive CRUD operations for automation rules, including:
+ * <ul>
+ * <li>Listing rules with filtering by tags and prefix</li>
+ * <li>Creating, updating, and deleting rules</li>
+ * <li>Managing rule configuration and enabled status</li>
+ * <li>Accessing rule modules (triggers, conditions, actions)</li>
+ * <li>Executing rules manually with custom context</li>
+ * <li>Simulating scheduled rule executions</li>
+ * </ul>
+ * </p>
+ *
+ * <p>
+ * Most endpoints require ADMIN role, except for:
+ * <ul>
+ * <li>GET /rules (summary mode) - accessible to USER role</li>
+ * <li>POST /rules/{ruleUID}/runnow - accessible to USER role</li>
+ * </ul>
+ * </p>
  *
  * @author Kai Kreuzer - Initial contribution
  * @author Markus Rathgeb - Use DTOs
@@ -128,6 +148,18 @@ public class RuleResource implements RESTResource {
 
     /** The URI path to this resource */
     public static final String PATH_RULES = "rules";
+
+    /** Module category identifier for triggers */
+    private static final String CATEGORY_TRIGGERS = "triggers";
+
+    /** Module category identifier for conditions */
+    private static final String CATEGORY_CONDITIONS = "conditions";
+
+    /** Module category identifier for actions */
+    private static final String CATEGORY_ACTIONS = "actions";
+
+    /** Maximum allowed simulation duration in days */
+    private static final long MAX_SIMULATION_DAYS = 180;
 
     private final Logger logger = LoggerFactory.getLogger(RuleResource.class);
 
@@ -242,6 +274,17 @@ public class RuleResource implements RESTResource {
         }
     }
 
+    /**
+     * Logs an exception with appropriate detail level based on debug mode.
+     *
+     * <p>
+     * In debug mode, includes full stack trace. In normal mode, logs only the message
+     * to avoid cluttering logs with expected validation errors.
+     * </p>
+     *
+     * @param e the exception to log
+     * @param errMessage the error message to include
+     */
     private void logException(RuntimeException e, String errMessage) {
         if (logger.isDebugEnabled()) {
             logger.warn("{}", errMessage, e);
@@ -447,9 +490,9 @@ public class RuleResource implements RESTResource {
         final ZonedDateTime fromDate = parseTime(from, ZonedDateTime::now);
         final ZonedDateTime untilDate = parseTime(until, () -> fromDate.plusDays(31));
 
-        if (ChronoUnit.DAYS.between(fromDate, untilDate) >= 180) {
+        if (ChronoUnit.DAYS.between(fromDate, untilDate) >= MAX_SIMULATION_DAYS) {
             return JSONResponse.createErrorResponse(Status.BAD_REQUEST,
-                    "Simulated time span must be smaller than 180 days.");
+                    "Simulated time span must be smaller than " + MAX_SIMULATION_DAYS + " days.");
         }
 
         final Stream<RuleExecution> ruleExecutions = ruleManager.simulateRuleExecutions(fromDate, untilDate);
@@ -577,6 +620,19 @@ public class RuleResource implements RESTResource {
         return Response.status(Status.NOT_FOUND).build();
     }
 
+    /**
+     * Finds a module by its ID within a collection of modules.
+     *
+     * <p>
+     * Performs a linear search through the collection. Returns null if the collection
+     * is null or if no module with the given ID is found.
+     * </p>
+     *
+     * @param <T> the type of module (Trigger, Condition, or Action)
+     * @param coll the collection of modules to search (may be null)
+     * @param id the unique identifier of the module to find
+     * @return the module with the matching ID, or null if not found
+     */
     protected @Nullable <T extends Module> T getModuleById(final @Nullable Collection<T> coll, final String id) {
         if (coll == null) {
             return null;
@@ -589,38 +645,89 @@ public class RuleResource implements RESTResource {
         return null;
     }
 
+    /**
+     * Retrieves a trigger module from a rule by its ID.
+     *
+     * @param rule the rule containing the trigger
+     * @param id the trigger ID
+     * @return the trigger, or null if not found
+     */
     protected @Nullable Trigger getTrigger(Rule rule, String id) {
         return getModuleById(rule.getTriggers(), id);
     }
 
+    /**
+     * Retrieves a condition module from a rule by its ID.
+     *
+     * @param rule the rule containing the condition
+     * @param id the condition ID
+     * @return the condition, or null if not found
+     */
     protected @Nullable Condition getCondition(Rule rule, String id) {
         return getModuleById(rule.getConditions(), id);
     }
 
+    /**
+     * Retrieves an action module from a rule by its ID.
+     *
+     * @param rule the rule containing the action
+     * @param id the action ID
+     * @return the action, or null if not found
+     */
     protected @Nullable Action getAction(Rule rule, String id) {
         return getModuleById(rule.getActions(), id);
     }
 
+    /**
+     * Retrieves a module from a rule by category and ID.
+     *
+     * <p>
+     * The module category must be one of:
+     * <ul>
+     * <li>"triggers" - returns a Trigger module</li>
+     * <li>"conditions" - returns a Condition module</li>
+     * <li>"actions" - returns an Action module</li>
+     * </ul>
+     * </p>
+     *
+     * @param rule the rule containing the module
+     * @param moduleCategory the category of the module ("triggers", "conditions", or "actions")
+     * @param id the module ID
+     * @return the module, or null if category is invalid or module not found
+     */
     protected @Nullable Module getModule(Rule rule, String moduleCategory, String id) {
-        if ("triggers".equals(moduleCategory)) {
+        if (CATEGORY_TRIGGERS.equals(moduleCategory)) {
             return getTrigger(rule, id);
-        } else if ("conditions".equals(moduleCategory)) {
+        } else if (CATEGORY_CONDITIONS.equals(moduleCategory)) {
             return getCondition(rule, id);
-        } else if ("actions".equals(moduleCategory)) {
+        } else if (CATEGORY_ACTIONS.equals(moduleCategory)) {
             return getAction(rule, id);
         } else {
             return null;
         }
     }
 
+    /**
+     * Retrieves a module DTO from a rule by category and ID.
+     *
+     * <p>
+     * Converts the module to its corresponding DTO type based on the category.
+     * Returns null if the category is invalid or if the module is not found.
+     * </p>
+     *
+     * @param rule the rule containing the module
+     * @param moduleCategory the category of the module ("triggers", "conditions", or "actions")
+     * @param id the module ID
+     * @return the module DTO, or null if category is invalid or module not found
+     */
     protected @Nullable ModuleDTO getModuleDTO(Rule rule, String moduleCategory, String id) {
-        if ("triggers".equals(moduleCategory)) {
+        if (CATEGORY_TRIGGERS.equals(moduleCategory)) {
             final Trigger trigger = getTrigger(rule, id);
             return trigger == null ? null : TriggerDTOMapper.map(trigger);
-        } else if ("conditions".equals(moduleCategory)) {
+        } else if (CATEGORY_CONDITIONS.equals(moduleCategory)) {
             final Condition condition = getCondition(rule, id);
             return condition == null ? null : ConditionDTOMapper.map(condition);
-        } else if ("actions".equals(moduleCategory)) {
+        } else if (CATEGORY_ACTIONS.equals(moduleCategory)) {
             final Action action = getAction(rule, id);
             return action == null ? null : ActionDTOMapper.map(action);
         } else {
