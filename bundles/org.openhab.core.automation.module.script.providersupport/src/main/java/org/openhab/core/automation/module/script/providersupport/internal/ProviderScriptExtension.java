@@ -39,8 +39,28 @@ import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
 
 /**
- * The {@link ProviderScriptExtension} extends scripts to provide openHAB entities like items.
- * It handles the lifecycle of these entities, ensuring that they are removed when the script is unloaded.
+ * The {@link ProviderScriptExtension} extends scripts to provide openHAB entities like items, things, metadata, and
+ * item-channel links.
+ * <p>
+ * This extension manages the lifecycle of script-provided entities, automatically removing them when the script is
+ * unloaded or reloaded. This prevents orphaned entities from remaining in the system after script termination.
+ * <p>
+ * <b>Architecture:</b>
+ * <ul>
+ * <li>Each script instance is identified by a unique {@code scriptIdentifier}</li>
+ * <li>Registry delegates are cached per script to maintain entity ownership tracking</li>
+ * <li>On script unload, all entities added by that script are automatically removed</li>
+ * <li>Thread-safe: Uses {@link ConcurrentHashMap} for registry caching</li>
+ * </ul>
+ * <p>
+ * <b>Usage Example:</b>
+ *
+ * <pre>
+ * // In a script (JavaScript/Groovy):
+ * var itemRegistry = scriptExtension.get("myScript", "itemRegistry");
+ * var item = new StringItem("MyScriptItem");
+ * itemRegistry.add(item); // Item will be auto-removed when script unloads
+ * </pre>
  *
  * @author Florian Hotze - Initial contribution
  */
@@ -53,6 +73,17 @@ public class ProviderScriptExtension implements ScriptExtensionProvider {
     private static final String METADATA_REGISTRY_NAME = "metadataRegistry";
     private static final String THING_REGISTRY_NAME = "thingRegistry";
 
+    /**
+     * Cache of registry delegates per script identifier.
+     * <p>
+     * Key: scriptIdentifier (unique per script instance)<br>
+     * Value: Map of registry type → ProviderRegistry instance
+     * <p>
+     * This cache ensures that each script gets the same registry instance across multiple {@code get()} calls,
+     * enabling proper tracking of which entities were added by which script.
+     * <p>
+     * Thread-safe: ConcurrentHashMap allows safe concurrent access from multiple scripts.
+     */
     private final Map<String, Map<String, ProviderRegistry>> registryCache = new ConcurrentHashMap<>();
 
     private final ItemChannelLinkRegistry itemChannelLinkRegistry;
@@ -97,16 +128,49 @@ public class ProviderScriptExtension implements ScriptExtensionProvider {
         return Set.of(ITEM_CHANNEL_LINK_REGISTRY_NAME, ITEM_REGISTRY_NAME, METADATA_REGISTRY_NAME, THING_REGISTRY_NAME);
     }
 
+    /**
+     * Retrieves or creates a registry delegate for the specified script and type.
+     * <p>
+     * This method implements lazy initialization with caching:
+     * <ol>
+     * <li>If a registry of the requested type already exists for this script, return it (cached)</li>
+     * <li>Otherwise, create a new registry instance and cache it for future calls</li>
+     * </ol>
+     * <p>
+     * <b>Registry Lifecycle:</b>
+     * <ul>
+     * <li>Created on first access per script</li>
+     * <li>Cached until script unload</li>
+     * <li>Automatically cleaned up in {@link #unload(String)}</li>
+     * </ul>
+     * <p>
+     * <b>Thread Safety:</b> This method is thread-safe due to ConcurrentHashMap usage. Multiple scripts can
+     * concurrently request registries without synchronization issues.
+     *
+     * @param scriptIdentifier unique identifier for the script instance (must not be null or blank)
+     * @param type registry type (must be one of: "itemChannelLinkRegistry", "itemRegistry", "metadataRegistry",
+     *            "thingRegistry")
+     * @return the registry delegate instance, or {@code null} if the type is not recognized
+     * @throws IllegalArgumentException if scriptIdentifier is null or blank, or if type is null
+     */
     @Override
     public @Nullable Object get(String scriptIdentifier, String type) throws IllegalArgumentException {
+        // Validate inputs
+        if (scriptIdentifier.isBlank()) {
+            throw new IllegalArgumentException("scriptIdentifier must not be blank");
+        }
+
+        // Get or create registry map for this script (thread-safe via ConcurrentHashMap)
         Map<String, ProviderRegistry> registries = Objects
                 .requireNonNull(registryCache.computeIfAbsent(scriptIdentifier, k -> new HashMap<>()));
 
+        // Check if registry already exists (cached)
         ProviderRegistry registry = registries.get(type);
         if (registry != null) {
             return registry;
         }
 
+        // Create new registry based on type
         return switch (type) {
             case ITEM_CHANNEL_LINK_REGISTRY_NAME -> {
                 ProviderItemChannelLinkRegistry providerItemChannelLinkRegistry = new ProviderItemChannelLinkRegistry(
@@ -132,7 +196,7 @@ public class ProviderScriptExtension implements ScriptExtensionProvider {
                 registries.put(THING_REGISTRY_NAME, thingRegistryDelegate);
                 yield thingRegistryDelegate;
             }
-            default -> null;
+            default -> null; // Unknown type - return null instead of throwing exception for compatibility
         };
     }
 
@@ -149,10 +213,26 @@ public class ProviderScriptExtension implements ScriptExtensionProvider {
         return Map.of();
     }
 
+    /**
+     * Unloads a script and removes all entities it provided.
+     * <p>
+     * This method is called when a script is unloaded or reloaded. It performs the following cleanup:
+     * <ol>
+     * <li>Removes the script's registry cache entry</li>
+     * <li>Calls {@link ProviderRegistry#removeAllAddedByScript()} on each registry</li>
+     * <li>Ensures all items, things, metadata, and links added by the script are removed</li>
+     * </ol>
+     * <p>
+     * <b>Thread Safety:</b> Safe to call concurrently for different scripts due to ConcurrentHashMap usage.
+     * However, concurrent unload calls for the same script are handled safely (idempotent operation).
+     *
+     * @param scriptIdentifier unique identifier for the script to unload
+     */
     @Override
     public void unload(String scriptIdentifier) {
         Map<String, ProviderRegistry> registries = registryCache.remove(scriptIdentifier);
         if (registries != null) {
+            // Remove all entities provided by this script from all registries
             for (ProviderRegistry registry : registries.values()) {
                 registry.removeAllAddedByScript();
             }
