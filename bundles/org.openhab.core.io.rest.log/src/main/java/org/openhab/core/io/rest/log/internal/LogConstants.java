@@ -16,19 +16,30 @@ import org.eclipse.jdt.annotation.NonNullByDefault;
 
 /**
  * The {@link LogConstants} class defines common constants, which are
- * used across the whole module.
+ * used across the whole module for REST log handling.
+ *
+ * <p>
+ * This class is intentionally non-instantiable.
+ * </p>
  *
  * @author Sebastian Janzen - Initial contribution
  */
 @NonNullByDefault
-public class LogConstants {
+public final class LogConstants {
 
-    // Log and response message to express, that the log severity addressed is not handled.
+    private LogConstants() {
+        throw new IllegalStateException("Utility class");
+    }
+
+    /** Log and response message to express, that the log severity addressed is not handled. */
     public static final String LOG_SEVERITY_IS_NOT_SUPPORTED = "Your log severity is not supported.";
+
+    /** Message for backend logging errors. */
     public static final String LOG_HANDLE_ERROR = "Internal logging error.";
 
-    // slf4j log pattern to format received log messages, params are URL and message
+    /** slf4j log pattern to format received log messages, params are URL and message. */
     public static final String FRONTEND_LOG_PATTERN = "Frontend Log ({}): {}";
 
+    /** Max number of logs stored in the ring buffer. */
     public static final int LOG_BUFFER_LIMIT = 500;
 }

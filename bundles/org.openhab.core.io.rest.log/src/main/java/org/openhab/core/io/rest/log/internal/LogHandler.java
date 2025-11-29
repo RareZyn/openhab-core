@@ -17,7 +17,6 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -52,6 +51,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
+ * REST handler for logging frontend messages to the backend
+ * and retrieve recent logs.
  *
  * @author Sebastian Janzen - Initial contribution
  * @author Markus Rathgeb - Migrated to JAX-RS Whiteboard Specification
@@ -80,15 +81,33 @@ public class LogHandler implements RESTResource {
     private final ConcurrentLinkedDeque<LogMessage> logBuffer = new ConcurrentLinkedDeque<>();
 
     /**
-     * Container for a log message
+     * Container for a log message sent from frontend clients.
+     *
+     * <p>
+     * Instances are mutable and intended to be deserialized from JSON requests. Each
+     * message contains a severity, optional URL, message text, and timestamp.
+     * </p>
      */
     public static class LogMessage {
         public long timestamp;
+
+        /** Must be one of: error, warn, info, debug. */
         public @Nullable String severity;
+
         public @Nullable URL url;
         public @Nullable String message;
+
+        /** Helper validation method for safer handling. */
+        public boolean isValid() {
+            return severity != null && !severity.isBlank() && message != null && !message.isBlank();
+        }
     }
 
+    /**
+     * Returns the currently enabled log levels for the backend logger.
+     *
+     * @return A map containing the log levels.
+     */
     @GET
     @Path("/levels")
     @Operation(operationId = "getLogLevels", summary = "Get log severities, which are logged by the current logger settings.", responses = {
@@ -97,37 +116,42 @@ public class LogHandler implements RESTResource {
         return Response.ok(createLogLevelsMap()).build();
     }
 
+    private List<LogMessage> getLatestLogs(int limit) {
+        List<LogMessage> snapshot = new ArrayList<>(logBuffer);
+
+        int fromIndex = Math.max(0, snapshot.size() - limit);
+        List<LogMessage> result = new ArrayList<>(snapshot.subList(fromIndex, snapshot.size()));
+
+        Collections.reverse(result);
+        return result;
+    }
+
+    /**
+     * Returns the last logged frontend messages up to the specified limit.
+     *
+     * @param limit Maximum number of messages to return (default: {@link LogConstants#LOG_BUFFER_LIMIT})
+     * @return A list of {@link LogMessage} objects.
+     */
     @GET
     @Operation(operationId = "getLastLogMessagesForFrontend", summary = "Returns the last logged frontend messages. The amount is limited to the "
             + LogConstants.LOG_BUFFER_LIMIT + " last entries.")
-
     public Response getLastLogs(@DefaultValue(LogConstants.LOG_BUFFER_LIMIT
             + "") @QueryParam("limit") @Parameter(name = "limit", schema = @Schema(implementation = Integer.class, minimum = "1", maximum = ""
                     + LogConstants.LOG_BUFFER_LIMIT)) @Nullable Integer limit) {
-        if (logBuffer.isEmpty()) {
-            return Response.ok("[]").build();
-        }
 
-        int effectiveLimit;
-        if (limit == null || limit <= 0 || limit > LogConstants.LOG_BUFFER_LIMIT) {
-            effectiveLimit = logBuffer.size();
-        } else {
-            effectiveLimit = limit;
-        }
+        int effectiveLimit = (limit == null || limit < 1) ? LogConstants.LOG_BUFFER_LIMIT
+                : Math.min(limit, LogConstants.LOG_BUFFER_LIMIT);
 
-        if (effectiveLimit >= logBuffer.size()) {
-            return Response.ok(logBuffer.toArray()).build();
-        } else {
-            final List<LogMessage> result = new ArrayList<>();
-            Iterator<LogMessage> iter = logBuffer.descendingIterator();
-            do {
-                result.add(iter.next());
-            } while (iter.hasNext() && result.size() < effectiveLimit);
-            Collections.reverse(result);
-            return Response.ok(result).build();
-        }
+        return Response.ok(getLatestLogs(effectiveLimit)).build();
     }
 
+    /**
+     * Logs a frontend message to the backend.
+     *
+     * @param logMessage Log message sent from a client.
+     * @return HTTP 200 if logged successfully, 400 for invalid payload, 403 if severity is unsupported, 500 if the
+     *         payload is null
+     */
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Operation(operationId = "logMessageToBackend", summary = "Log a frontend log message to the backend.", responses = {
@@ -142,43 +166,42 @@ public class LogHandler implements RESTResource {
         }
         logMessage.timestamp = ZonedDateTime.now().toInstant().toEpochMilli();
 
+        if (!logMessage.isValid()) {
+            logger.debug("Invalid log message received: {}", logMessage);
+            return Response.status(Response.Status.BAD_REQUEST).entity("{\"error\":\"Invalid log message payload\"}")
+                    .build();
+        }
+
         if (!doLog(logMessage)) {
             return Response.status(403).entity(String.format(TEMPLATE_INTERNAL_ERROR,
                     LogConstants.LOG_SEVERITY_IS_NOT_SUPPORTED, logMessage.severity)).build();
         }
 
-        logBuffer.add(logMessage);
-        if (logBuffer.size() > LogConstants.LOG_BUFFER_LIMIT) {
-            logBuffer.pollLast(); // Remove last element of Deque
+        logBuffer.addFirst(logMessage);
+        while (logBuffer.size() > LogConstants.LOG_BUFFER_LIMIT) {
+            logBuffer.pollLast();
         }
 
         return Response.ok(null, MediaType.TEXT_PLAIN).build();
     }
 
     /**
-     * Executes the logging call.
+     * Executes the logging call using slf4j.
      *
-     * @param logMessage
-     * @return Falls if severity is not supported, true if successfully logged.
+     * @param logMessage The message to log
+     * @return False if severity is not supported, true if successfully logged.
      */
     private boolean doLog(LogMessage logMessage) {
-        String severity = logMessage.severity;
-        severity = severity != null ? severity.toLowerCase() : "";
+        Severity severity = Severity.fromString(logMessage.severity);
+
         switch (severity) {
-            case "error":
-                logger.error(LogConstants.FRONTEND_LOG_PATTERN, logMessage.url, logMessage.message);
-                break;
-            case "warn":
-                logger.warn(LogConstants.FRONTEND_LOG_PATTERN, logMessage.url, logMessage.message);
-                break;
-            case "info":
-                logger.info(LogConstants.FRONTEND_LOG_PATTERN, logMessage.url, logMessage.message);
-                break;
-            case "debug":
-                logger.debug(LogConstants.FRONTEND_LOG_PATTERN, logMessage.url, logMessage.message);
-                break;
-            default:
+            case ERROR -> logger.error(LogConstants.FRONTEND_LOG_PATTERN, logMessage.url, logMessage.message);
+            case WARN -> logger.warn(LogConstants.FRONTEND_LOG_PATTERN, logMessage.url, logMessage.message);
+            case INFO -> logger.info(LogConstants.FRONTEND_LOG_PATTERN, logMessage.url, logMessage.message);
+            case DEBUG -> logger.debug(LogConstants.FRONTEND_LOG_PATTERN, logMessage.url, logMessage.message);
+            case null -> {
                 return false;
+            }
         }
         return true;
     }
@@ -193,5 +216,26 @@ public class LogHandler implements RESTResource {
         result.put("info", logger.isInfoEnabled());
         result.put("debug", logger.isDebugEnabled());
         return result;
+    }
+
+    /**
+     * Reduce usage of large switch on strings in {@link LogHandler#doLog(LogMessage)}
+     *
+     */
+    public enum Severity {
+        ERROR,
+        WARN,
+        INFO,
+        DEBUG;
+
+        public static @Nullable Severity fromString(@Nullable String s) {
+            if (s == null)
+                return null;
+            try {
+                return Severity.valueOf(s.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
     }
 }
