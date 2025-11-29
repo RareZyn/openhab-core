@@ -26,10 +26,12 @@ import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferencePolicy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * This class announces the REST API through mDNS for clients to automatically
- * discover it.
+ * Announces the openHAB REST API over mDNS so that clients can automatically
+ * discover it the REST endpoints (HTTP and HTTPS).
  *
  * @author Kai Kreuzer - Initial contribution
  * @author Markus Rathgeb - Use HTTP service utility functions
@@ -39,13 +41,16 @@ import org.osgi.service.component.annotations.ReferencePolicy;
 })
 public class MDNSAnnouncer {
 
-    private int httpSSLPort;
-
-    private int httpPort;
-
-    private String mdnsName;
+    private final Logger logger = LoggerFactory.getLogger(MDNSAnnouncer.class);
 
     private MDNSService mdnsService;
+
+    private int httpSSLPort;
+    private int httpPort;
+    private String mdnsName;
+
+    private ServiceDescription httpServiceDescription;
+    private ServiceDescription httpsServiceDescription;
 
     @Reference(policy = ReferencePolicy.DYNAMIC)
     public void setMDNSService(MDNSService mdnsService) {
@@ -57,50 +62,107 @@ public class MDNSAnnouncer {
     }
 
     @Activate
-    public void activate(BundleContext bundleContext, Map<String, Object> properties) {
-        if (!"false".equalsIgnoreCase((String) properties.get("enabled"))) {
-            if (mdnsService != null) {
-                mdnsName = bundleContext.getProperty("mdnsName");
-                if (mdnsName == null) {
-                    mdnsName = "openhab";
-                }
-                try {
-                    httpPort = HttpServiceUtil.getHttpServicePort(bundleContext);
-                    if (httpPort != -1) {
-                        mdnsService.registerService(getDefaultServiceDescription());
-                    }
-                } catch (NumberFormatException e) {
-                }
-                try {
-                    httpSSLPort = HttpServiceUtil.getHttpServicePortSecure(bundleContext);
-                    if (httpSSLPort != -1) {
-                        mdnsService.registerService(getSSLServiceDescription());
-                    }
-                } catch (NumberFormatException e) {
-                }
-            }
+    public void activate(BundleContext bundleContext, Map<String, Object> config) {
+        if (isDisabled(config)) {
+            logger.info("mDNS announcement is disabled via configuration.");
+            return;
         }
+
+        if (mdnsService == null) {
+            logger.warn("mDNS service is not available. REST endpoints will not be announced.");
+            return;
+        }
+
+        mdnsName = bundleContext.getProperty("mdnsName");
+        if (mdnsName == null || mdnsName.isBlank()) {
+            mdnsName = "openhab";
+        }
+
+        logger.info("Activating MDNSAnnouncer using name '{}'", mdnsName);
+
+        readPorts(bundleContext);
+        buildServiceDescriptions();
+
+        registerIfValid(httpServiceDescription);
+        registerIfValid(httpsServiceDescription);
     }
 
     @Deactivate
     public void deactivate() {
-        if (mdnsService != null) {
-            mdnsService.unregisterService(getDefaultServiceDescription());
-            mdnsService.unregisterService(getSSLServiceDescription());
+        if (mdnsService == null) {
+            return;
+        }
+
+        unregisterSafe(httpServiceDescription);
+        unregisterSafe(httpsServiceDescription);
+
+        logger.info("MDNSAnnouncer deactivated.");
+    }
+
+    // Helper methods
+
+    private boolean isDisabled(Map<String, Object> config) {
+        Object enabled = config.get("enabled");
+        return enabled instanceof String && "false".equalsIgnoreCase((String) enabled);
+    }
+
+    private void readPorts(BundleContext context) {
+        try {
+            httpPort = HttpServiceUtil.getHttpServicePort(context);
+            logger.debug("HTTP port resolved: {}", httpPort);
+        } catch (NumberFormatException e) {
+            logger.error("Invalid HTTP port in configuration", e);
+        }
+
+        try {
+            httpSSLPort = HttpServiceUtil.getHttpServicePortSecure(context);
+            logger.debug("HTTPS port resolved: {}", httpSSLPort);
+        } catch (NumberFormatException e) {
+            logger.error("Invalid HTTPS port in configuration", e);
         }
     }
 
-    private ServiceDescription getDefaultServiceDescription() {
-        Hashtable<String, String> serviceProperties = new Hashtable<>();
-        serviceProperties.put("uri", RESTConstants.REST_URI);
-        return new ServiceDescription("_" + mdnsName + "-server._tcp.local.", mdnsName, httpPort, serviceProperties);
+    private void buildServiceDescriptions() {
+        if (httpPort > 0) {
+            Hashtable<String, String> props = new Hashtable<>();
+            props.put("uri", RESTConstants.REST_URI);
+
+            httpServiceDescription = new ServiceDescription("_" + mdnsName + "-server._tcp.local.", mdnsName, httpPort,
+                    props);
+        }
+
+        if (httpSSLPort > 0) {
+            Hashtable<String, String> props = new Hashtable<>();
+            props.put("uri", RESTConstants.REST_URI);
+
+            httpsServiceDescription = new ServiceDescription("_" + mdnsName + "-server-ssl._tcp.local.", mdnsName,
+                    httpSSLPort, props);
+        }
     }
 
-    private ServiceDescription getSSLServiceDescription() {
-        ServiceDescription description = getDefaultServiceDescription();
-        description.serviceType = "_" + mdnsName + "-server-ssl._tcp.local.";
-        description.serviceName = mdnsName + "-ssl";
-        description.servicePort = httpSSLPort;
-        return description;
+    private void registerIfValid(ServiceDescription description) {
+        if (description == null) {
+            return;
+        }
+
+        try {
+            mdnsService.registerService(description);
+            logger.info("Registered mDNS service: {} on port {}", description.serviceType, description.servicePort);
+        } catch (Exception e) {
+            logger.error("Failed to register mDNS service {}", description.serviceName, e);
+        }
+    }
+
+    private void unregisterSafe(ServiceDescription description) {
+        if (description == null) {
+            return;
+        }
+
+        try {
+            mdnsService.unregisterService(description);
+            logger.info("Unregistered mDNS service: {}", description.serviceName);
+        } catch (Exception e) {
+            logger.error("Error while unregistering mDNS service {}", description.serviceName, e);
+        }
     }
 }
