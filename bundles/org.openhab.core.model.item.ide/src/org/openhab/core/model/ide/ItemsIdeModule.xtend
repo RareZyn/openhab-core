@@ -17,7 +17,13 @@ package org.openhab.core.model.ide
 
 
 /**
- * Use this class to register ide components.
+ * Use this class to register IDE components for the Items DSL.
+ * This module extends AbstractItemsIdeModule to provide IDE-specific
+ * functionality such as content assist, syntax highlighting, and validation
+ * for the Items domain-specific language in development environments.
+ * 
+ * IDE components registered here are used by Xtext-based editors and language servers
+ * to enhance the development experience when working with .items files.
  */
 class ItemsIdeModule extends AbstractItemsIdeModule {
 }
