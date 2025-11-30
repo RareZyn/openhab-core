@@ -12,19 +12,13 @@
  */
 package org.openhab.core.io.rest.voice.internal;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
 import javax.annotation.security.RolesAllowed;
-import javax.ws.rs.Consumes;
-import javax.ws.rs.GET;
-import javax.ws.rs.HeaderParam;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
-import javax.ws.rs.QueryParam;
+import javax.ws.rs.*;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -33,19 +27,15 @@ import javax.ws.rs.core.Response.Status;
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.core.audio.AudioManager;
-import org.openhab.core.audio.AudioSink;
-import org.openhab.core.audio.AudioSource;
 import org.openhab.core.auth.Role;
 import org.openhab.core.io.rest.JSONResponse;
 import org.openhab.core.io.rest.LocaleService;
 import org.openhab.core.io.rest.RESTConstants;
 import org.openhab.core.io.rest.RESTResource;
+import org.openhab.core.io.rest.voice.internal.dto.DialogStartParams;
+import org.openhab.core.io.rest.voice.internal.dto.ListenAndAnswerParams;
 import org.openhab.core.library.types.PercentType;
-import org.openhab.core.voice.KSService;
-import org.openhab.core.voice.STTService;
-import org.openhab.core.voice.TTSService;
-import org.openhab.core.voice.Voice;
-import org.openhab.core.voice.VoiceManager;
+import org.openhab.core.voice.*;
 import org.openhab.core.voice.text.HumanLanguageInterpreter;
 import org.openhab.core.voice.text.InterpretationException;
 import org.osgi.service.component.annotations.Activate;
@@ -68,7 +58,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * This class acts as a REST resource for voice features.
+ * This class acts as a REST resource for voice and language processing.
  *
  * @author Kai Kreuzer - Initial contribution
  * @author Laurent Garnier - add TTS feature to the REST API
@@ -90,6 +80,7 @@ public class VoiceResource implements RESTResource {
     public static final String PATH_VOICE = "voice";
 
     private final Logger logger = LoggerFactory.getLogger(VoiceResource.class);
+
     private final LocaleService localeService;
     private final AudioManager audioManager;
     private final VoiceManager voiceManager;
@@ -104,6 +95,8 @@ public class VoiceResource implements RESTResource {
         this.voiceManager = voiceManager;
     }
 
+    /* --- INTERPRETER ENDPOINTS --- */
+
     @GET
     @Path("/interpreters")
     @Produces(MediaType.APPLICATION_JSON)
@@ -111,7 +104,7 @@ public class VoiceResource implements RESTResource {
             @ApiResponse(responseCode = "200", description = "OK", content = @Content(array = @ArraySchema(schema = @Schema(implementation = HumanLanguageInterpreterDTO.class)))) })
     public Response getInterpreters(
             @HeaderParam(HttpHeaders.ACCEPT_LANGUAGE) @Parameter(description = "language") @Nullable String language) {
-        final Locale locale = localeService.getLocale(language);
+        Locale locale = localeService.getLocale(language);
         List<HumanLanguageInterpreterDTO> dtos = voiceManager.getHLIs().stream().map(hli -> HLIMapper.map(hli, locale))
                 .toList();
         return Response.ok(dtos).build();
@@ -126,14 +119,11 @@ public class VoiceResource implements RESTResource {
     public Response getInterpreter(
             @HeaderParam(HttpHeaders.ACCEPT_LANGUAGE) @Parameter(description = "language") @Nullable String language,
             @PathParam("id") @Parameter(description = "interpreter id") String id) {
-        final Locale locale = localeService.getLocale(language);
+        Locale locale = localeService.getLocale(language);
         HumanLanguageInterpreter hli = voiceManager.getHLI(id);
-        if (hli == null) {
-            return JSONResponse.createErrorResponse(Status.NOT_FOUND, "No interpreter found");
-        }
-
-        HumanLanguageInterpreterDTO dto = HLIMapper.map(hli, locale);
-        return Response.ok(dto).build();
+        if (hli == null)
+            return notFound("No interpreter found");
+        return Response.ok(HLIMapper.map(hli, locale)).build();
     }
 
     @POST
@@ -148,11 +138,11 @@ public class VoiceResource implements RESTResource {
             @HeaderParam(HttpHeaders.ACCEPT_LANGUAGE) @Parameter(description = "language") @Nullable String language,
             @Parameter(description = "text to interpret", required = true) String text,
             @PathParam("ids") @Parameter(description = "comma separated list of interpreter ids") List<String> ids) {
-        final Locale locale = localeService.getLocale(language);
+        Locale locale = localeService.getLocale(language);
         List<HumanLanguageInterpreter> hlis = voiceManager.getHLIsByIds(ids);
-        if (hlis.isEmpty()) {
-            return JSONResponse.createErrorResponse(Status.NOT_FOUND, "No interpreter found");
-        }
+        if (hlis.isEmpty())
+            return notFound("No interpreter found");
+
         String answer = "";
         String error = null;
         for (HumanLanguageInterpreter interpreter : hlis) {
@@ -162,15 +152,11 @@ public class VoiceResource implements RESTResource {
                 error = null;
                 break;
             } catch (InterpretationException e) {
-                logger.debug("Interpretation exception: {}", e.getMessage());
+                logger.error("Interpretation exception: {}", e.getMessage());
                 error = Objects.requireNonNullElse(e.getMessage(), "Unexpected error");
             }
         }
-        if (error != null) {
-            return JSONResponse.createErrorResponse(Status.BAD_REQUEST, error);
-        } else {
-            return Response.ok(answer, MediaType.TEXT_PLAIN).build();
-        }
+        return error != null ? badRequest(error) : Response.ok(answer, MediaType.TEXT_PLAIN).build();
     }
 
     @POST
@@ -184,19 +170,39 @@ public class VoiceResource implements RESTResource {
     public Response interpret(
             @HeaderParam(HttpHeaders.ACCEPT_LANGUAGE) @Parameter(description = "language") @Nullable String language,
             @Parameter(description = "text to interpret", required = true) String text) {
-        final Locale locale = localeService.getLocale(language);
+        Locale locale = localeService.getLocale(language);
         HumanLanguageInterpreter hli = voiceManager.getHLI();
-        if (hli == null) {
-            return JSONResponse.createErrorResponse(Status.NOT_FOUND, "No interpreter found");
-        }
+        if (hli == null)
+            return notFound("No interpreter found");
 
         try {
-            String answer = hli.interpret(locale, text);
-            return Response.ok(answer, MediaType.TEXT_PLAIN).build();
+            return Response.ok(hli.interpret(locale, text), MediaType.TEXT_PLAIN).build();
         } catch (InterpretationException e) {
-            return JSONResponse.createErrorResponse(Status.BAD_REQUEST, e.getMessage());
+            return badRequest(e.getMessage());
         }
     }
+
+    @POST
+    @Path("/interpreters/{ids: .+}")
+    @Consumes(MediaType.TEXT_PLAIN)
+    @Produces(MediaType.TEXT_PLAIN)
+    @Operation(summary = "Interpret using one or more HLIs (comma-seperated IDs or 'default')")
+    public Response interpretText(@HeaderParam(HttpHeaders.ACCEPT_LANGUAGE) @Nullable String language,
+            @PathParam("ids") String idsPath, @Parameter(description = "Text to interpret") String text) {
+
+        if (text.isBlank())
+            return badRequest("Text is required");
+
+        Locale locale = localeService.getLocale(language);
+        List<String> ids = "default".equalsIgnoreCase(idsPath) ? List.of()
+                : Arrays.stream(idsPath.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+
+        var result = InterpretationService.interpret(voiceManager, ids, locale, text, logger);
+        return result.success() ? Response.ok(result.answer(), MediaType.TEXT_PLAIN).build()
+                : badRequest(result.errorMessage());
+    }
+
+    /* --- VOICE ENDPOINTS --- */
 
     @GET
     @Path("/voices")
@@ -204,8 +210,7 @@ public class VoiceResource implements RESTResource {
     @Operation(operationId = "getVoices", summary = "Get the list of all voices.", responses = {
             @ApiResponse(responseCode = "200", description = "OK", content = @Content(array = @ArraySchema(schema = @Schema(implementation = VoiceDTO.class)))) })
     public Response getVoices() {
-        List<VoiceDTO> dtos = voiceManager.getAllVoices().stream().map(VoiceMapper::map).toList();
-        return Response.ok(dtos).build();
+        return Response.ok(voiceManager.getAllVoices().stream().map(VoiceMapper::map).toList()).build();
     }
 
     @GET
@@ -216,12 +221,9 @@ public class VoiceResource implements RESTResource {
             @ApiResponse(responseCode = "404", description = "No default voice was found.") })
     public Response getDefaultVoice() {
         Voice voice = voiceManager.getDefaultVoice();
-        if (voice == null) {
-            return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Default voice not found");
-        }
-
-        VoiceDTO dto = VoiceMapper.map(voice);
-        return Response.ok(dto).build();
+        if (voice == null)
+            return notFound("Default voice not found");
+        return Response.ok(VoiceMapper.map(voice)).build();
     }
 
     @POST
@@ -233,188 +235,41 @@ public class VoiceResource implements RESTResource {
             @QueryParam("voiceid") @Parameter(description = "voice id") @Nullable String voiceId,
             @QueryParam("sinkid") @Parameter(description = "audio sink id") @Nullable String sinkId,
             @QueryParam("volume") @Parameter(description = "volume level") @Nullable String volume) {
-        PercentType volumePercent = null;
-        if (volume != null && !volume.isBlank()) {
-            volumePercent = new PercentType(volume);
-        }
+        PercentType volumePercent = (volume != null && !volume.isBlank()) ? new PercentType(volume) : null;
         voiceManager.say(text, voiceId, sinkId, volumePercent);
         return Response.ok(null, MediaType.TEXT_PLAIN).build();
     }
 
+    /* --- DIALOG ENDPOINTS --- */
+
     @POST
     @Path("/dialog/start")
-    @Consumes(MediaType.TEXT_PLAIN)
-    @Operation(operationId = "startDialog", summary = "Start dialog processing for a given audio source.", responses = {
-            @ApiResponse(responseCode = "200", description = "OK"),
-            @ApiResponse(responseCode = "404", description = "One of the given ids is wrong."),
-            @ApiResponse(responseCode = "400", description = "Services are missing or language is not supported by services or dialog processing is already started for the audio source.") })
-    public Response startDialog(
-            @HeaderParam(HttpHeaders.ACCEPT_LANGUAGE) @Parameter(description = "language") @Nullable String language,
-            @QueryParam("sourceId") @Parameter(description = "source ID") @Nullable String sourceId,
-            @QueryParam("ksId") @Parameter(description = "keywork spotter ID") @Nullable String ksId,
-            @QueryParam("sttId") @Parameter(description = "Speech-to-Text ID") @Nullable String sttId,
-            @QueryParam("ttsId") @Parameter(description = "Text-to-Speech ID") @Nullable String ttsId,
-            @QueryParam("voiceId") @Parameter(description = "voice ID") @Nullable String voiceId,
-            @QueryParam("hliIds") @Parameter(description = "comma separated list of interpreter IDs") @Nullable String hliIds,
-            @QueryParam("sinkId") @Parameter(description = "audio sink ID") @Nullable String sinkId,
-            @QueryParam("keyword") @Parameter(description = "keyword") @Nullable String keyword,
-            @QueryParam("listeningItem") @Parameter(description = "listening item") @Nullable String listeningItem) {
-        var dialogContextBuilder = voiceManager.getDialogContextBuilder();
-        if (sourceId != null) {
-            AudioSource source = audioManager.getSource(sourceId);
-            if (source == null) {
-                return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Audio source not found");
-            }
-            dialogContextBuilder.withSource(source);
-        }
-        if (ksId != null) {
-            KSService ks = voiceManager.getKS(ksId);
-            if (ks == null) {
-                return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Keyword spotter not found");
-            }
-            dialogContextBuilder.withKS(ks);
-        }
-        if (sttId != null) {
-            STTService stt = voiceManager.getSTT(sttId);
-            if (stt == null) {
-                return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Speech-to-Text not found");
-            }
-            dialogContextBuilder.withSTT(stt);
-        }
-        if (ttsId != null) {
-            TTSService tts = voiceManager.getTTS(ttsId);
-            if (tts == null) {
-                return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Text-to-Speech not found");
-            }
-            dialogContextBuilder.withTTS(tts);
-        }
-        if (voiceId != null) {
-            Voice voice = getVoice(voiceId);
-            if (voice == null) {
-                return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Voice not found");
-            }
-            dialogContextBuilder.withVoice(voice);
-        }
-        if (hliIds != null) {
-            List<HumanLanguageInterpreter> interpreters = voiceManager.getHLIsByIds(hliIds);
-            if (interpreters.isEmpty()) {
-                return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Interpreter not found");
-            }
-            dialogContextBuilder.withHLIs(interpreters);
-        }
-        if (sinkId != null) {
-            AudioSink sink = audioManager.getSink(sinkId);
-            if (sink == null) {
-                return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Audio sink not found");
-            }
-            dialogContextBuilder.withSink(sink);
-        }
-        if (listeningItem != null) {
-            dialogContextBuilder.withListeningItem(listeningItem);
-        }
-        if (keyword != null) {
-            dialogContextBuilder.withKeyword(keyword);
-        }
-        try {
-            voiceManager.startDialog(dialogContextBuilder.withLocale(localeService.getLocale(language)).build());
-            return Response.ok(null, MediaType.TEXT_PLAIN).build();
-        } catch (IllegalStateException e) {
-            return JSONResponse.createErrorResponse(Status.BAD_REQUEST, e.getMessage());
-        }
+    @Operation(summary = "Start continuous voice dialog (support keyword spotting).", description = "Start a persistent voice dialog.")
+    public Response startDialog(@BeanParam DialogStartParams params) {
+        return DialogService.startDialog(voiceManager, audioManager, localeService, params, logger);
     }
 
     @POST
     @Path("/dialog/stop")
-    @Consumes(MediaType.TEXT_PLAIN)
-    @Operation(operationId = "stopDialog", summary = "Stop dialog processing for a given audio source.", responses = {
-            @ApiResponse(responseCode = "200", description = "OK"),
-            @ApiResponse(responseCode = "404", description = "No audio source was found."),
-            @ApiResponse(responseCode = "400", description = "No dialog processing is started for the audio source.") })
-    public Response stopDialog(
-            @QueryParam("sourceId") @Parameter(description = "source ID") @Nullable String sourceId) {
-        AudioSource source = null;
-        if (sourceId != null) {
-            source = audioManager.getSource(sourceId);
-            if (source == null) {
-                return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Audio source not found");
-            }
-        }
-        try {
-            voiceManager.stopDialog(source);
-            return Response.ok(null, MediaType.TEXT_PLAIN).build();
-        } catch (IllegalStateException e) {
-            return JSONResponse.createErrorResponse(Status.BAD_REQUEST, e.getMessage());
-        }
+    @Operation(summary = "Stop active voice dialog.")
+    public Response stopDialog(@QueryParam("sourceId") @Nullable String sourceId) {
+        return DialogService.stopDialog(audioManager, voiceManager, sourceId, logger);
     }
 
     @POST
     @Path("/listenandanswer")
-    @Consumes(MediaType.TEXT_PLAIN)
-    @Operation(operationId = "listenAndAnswer", summary = "Executes a simple dialog sequence without keyword spotting for a given audio source.", responses = {
-            @ApiResponse(responseCode = "200", description = "OK"),
-            @ApiResponse(responseCode = "404", description = "One of the given ids is wrong."),
-            @ApiResponse(responseCode = "400", description = "Services are missing or language is not supported by services or dialog processing is already started for the audio source.") })
-    public Response listenAndAnswer(
-            @HeaderParam(HttpHeaders.ACCEPT_LANGUAGE) @Parameter(description = "language") @Nullable String language,
-            @QueryParam("sourceId") @Parameter(description = "source ID") @Nullable String sourceId,
-            @QueryParam("sttId") @Parameter(description = "Speech-to-Text ID") @Nullable String sttId,
-            @QueryParam("ttsId") @Parameter(description = "Text-to-Speech ID") @Nullable String ttsId,
-            @QueryParam("voiceId") @Parameter(description = "voice ID") @Nullable String voiceId,
-            @QueryParam("hliIds") @Parameter(description = "interpreter IDs") @Nullable List<String> hliIds,
-            @QueryParam("sinkId") @Parameter(description = "audio sink ID") @Nullable String sinkId,
-            @QueryParam("listeningItem") @Parameter(description = "listening item") @Nullable String listeningItem) {
-        var dialogContextBuilder = voiceManager.getDialogContextBuilder();
-        if (sourceId != null) {
-            AudioSource source = audioManager.getSource(sourceId);
-            if (source == null) {
-                return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Audio source not found");
-            }
-            dialogContextBuilder.withSource(source);
-        }
-        if (sttId != null) {
-            STTService stt = voiceManager.getSTT(sttId);
-            if (stt == null) {
-                return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Speech-to-Text not found");
-            }
-            dialogContextBuilder.withSTT(stt);
-        }
-        if (ttsId != null) {
-            TTSService tts = voiceManager.getTTS(ttsId);
-            if (tts == null) {
-                return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Text-to-Speech not found");
-            }
-            dialogContextBuilder.withTTS(tts);
-        }
-        if (voiceId != null) {
-            Voice voice = getVoice(voiceId);
-            if (voice == null) {
-                return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Voice not found");
-            }
-            dialogContextBuilder.withVoice(voice);
-        }
-        if (hliIds != null) {
-            List<HumanLanguageInterpreter> interpreters = voiceManager.getHLIsByIds(hliIds);
-            if (interpreters.isEmpty()) {
-                return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Interpreter not found");
-            }
-            dialogContextBuilder.withHLIs(interpreters);
-        }
-        if (sinkId != null) {
-            AudioSink sink = audioManager.getSink(sinkId);
-            if (sink == null) {
-                return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Audio sink not found");
-            }
-            dialogContextBuilder.withSink(sink);
-        }
-        try {
-            voiceManager.listenAndAnswer(dialogContextBuilder.withLocale(localeService.getLocale(language)).build());
-            return Response.ok(null, MediaType.TEXT_PLAIN).build();
-        } catch (IllegalStateException e) {
-            return JSONResponse.createErrorResponse(Status.BAD_REQUEST, e.getMessage());
-        }
+    @Operation(summary = "One-shot: listen -> interpret -> answer", description = "Non-persistent dialog: listen once, interprets, speaks response, then ends.")
+    public Response listenAndAnswer(@BeanParam ListenAndAnswerParams params) {
+        return DialogService.listenAndAnswer(voiceManager, audioManager, localeService, params, logger);
     }
 
-    private @Nullable Voice getVoice(String id) {
-        return voiceManager.getAllVoices().stream().filter(voice -> voice.getUID().equals(id)).findAny().orElse(null);
+    /* --- PRIVATE HELPERS --- */
+
+    private Response notFound(@Nullable String message) {
+        return JSONResponse.createErrorResponse(Status.NOT_FOUND, Objects.requireNonNullElse(message, "Not found"));
+    }
+
+    private Response badRequest(@Nullable String message) {
+        return JSONResponse.createErrorResponse(Status.BAD_REQUEST, Objects.requireNonNullElse(message, "Bad request"));
     }
 }

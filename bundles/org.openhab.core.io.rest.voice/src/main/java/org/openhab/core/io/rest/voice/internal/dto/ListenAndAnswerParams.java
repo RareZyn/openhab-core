@@ -10,14 +10,16 @@
  *
  * SPDX-License-Identifier: EPL-2.0
  */
-package org.openhab.core.io.rest.voice.internal;
+package org.openhab.core.io.rest.voice.internal.dto;
 
-import org.openhab.core.voice.Voice;
+import org.eclipse.jdt.annotation.NonNullByDefault;
 
 /**
- * A DTO that is used on the REST API to provide infos about {@link Voice} to UIs.
  *
- * @author Laurent Garnier - Initial contribution
+ *
+ * @author Nuraiman Danial - Initial contribution
  */
-public record VoiceDTO(String id, String label, String locale) {
+@NonNullByDefault
+public class ListenAndAnswerParams extends DialogParams {
+    // Inherits all fields from DialogParams
 }
