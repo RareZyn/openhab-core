@@ -35,7 +35,7 @@ public class MqttException extends Exception {
      * @param reason the reason for the exception.
      */
     public MqttException(String reason) {
-        this.cause = new Exception("reason");
+        this.cause = new Exception(reason);
     }
 
     /**
