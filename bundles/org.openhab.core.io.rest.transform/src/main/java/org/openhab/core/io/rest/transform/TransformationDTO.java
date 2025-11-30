@@ -13,6 +13,7 @@
 package org.openhab.core.io.rest.transform;
 
 import java.util.Map;
+import java.util.Objects;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.openhab.core.transform.Transformation;
@@ -24,16 +25,62 @@ import org.openhab.core.transform.Transformation;
  */
 @NonNullByDefault
 public class TransformationDTO {
-    public String uid;
-    public String label;
-    public String type;
-    public Map<String, String> configuration;
-    public boolean editable = false;
+    private String uid;
+    private String label;
+    private String type;
+    private Map<String, String> configuration;
+    private boolean editable = false;
 
+    /**
+     * Build DTO from domain Transformation object.
+     *
+     * @param transformation the transformation to wrap
+     */
     public TransformationDTO(Transformation transformation) {
         this.uid = transformation.getUID();
         this.label = transformation.getLabel();
         this.type = transformation.getType();
         this.configuration = transformation.getConfiguration();
+    }
+
+    public String getUid() {
+        return uid;
+    }
+
+    public void setUid(String uid) {
+        this.uid = uid;
+    }
+
+    public String getLabel() {
+        return label;
+    }
+
+    public void setLabel(String label) {
+        this.label = label;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public Map<String, String> getConfiguration() {
+        return configuration;
+    }
+
+    public void setConfiguration(Map<String, String> configuration) {
+        this.configuration = configuration;
+    }
+
+    public void setEditable(boolean editable) {
+        this.editable = editable;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(uid, label, type, configuration, editable);
     }
 }
