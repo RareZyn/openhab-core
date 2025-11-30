@@ -52,6 +52,13 @@ public class ValueTypeToStringConverter implements IValueConverter<@Nullable Obj
         }
     }
 
+    /**
+     * Converts a value to its string representation.
+     *
+     * @param value the value to convert, must not be null
+     * @return the string representation of the value
+     * @throws ValueConverterException if the value is null or of an unsupported type
+     */
     @Override
     public String toString(@Nullable Object value) throws ValueConverterException {
         if (value == null) {
@@ -69,7 +76,16 @@ public class ValueTypeToStringConverter implements IValueConverter<@Nullable Obj
         throw new ValueConverterException("Unknown value type: " + value.getClass().getSimpleName(), null, null);
     }
 
+    /**
+     * Converts a string value to its escaped string representation.
+     *
+     * @param value the string value to escape, must not be null
+     * @return the escaped string representation
+     */
     protected String toEscapedString(String value) {
+        if (value == null) {
+            throw new IllegalArgumentException("Value cannot be null");
+        }
         return '"' + Strings.convertToJavaString(value, false) + '"';
     }
 }
