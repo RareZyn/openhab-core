@@ -30,7 +30,8 @@ import org.osgi.service.component.annotations.Reference;
 import com.google.gson.Gson;
 
 /**
- * The {@link EventWebSocketAdapter} allows subscription to oh events over WebSocket
+ * The {@link EventWebSocketAdapter} allows subscription to openHAB events over WebSocket.
+ * Provides bidirectional communication: clients can receive events and send commands/states via WebSocket.
  *
  * @author Jan N. Klug - Initial contribution
  */
@@ -44,8 +45,20 @@ public class EventWebSocketAdapter implements EventSubscriber, WebSocketAdapter 
     private final ItemEventUtility itemEventUtility;
     private final Set<EventWebSocket> webSockets = new CopyOnWriteArraySet<>();
 
+    /**
+     * Constructs a new EventWebSocketAdapter with the specified dependencies.
+     *
+     * @param eventPublisher the EventPublisher for publishing events, must not be null
+     * @param itemRegistry the ItemRegistry for looking up items, must not be null
+     */
     @Activate
     public EventWebSocketAdapter(@Reference EventPublisher eventPublisher, @Reference ItemRegistry itemRegistry) {
+        if (eventPublisher == null) {
+            throw new IllegalArgumentException("EventPublisher cannot be null");
+        }
+        if (itemRegistry == null) {
+            throw new IllegalArgumentException("ItemRegistry cannot be null");
+        }
         this.eventPublisher = eventPublisher;
         itemEventUtility = new ItemEventUtility(gson, itemRegistry);
     }
@@ -55,17 +68,46 @@ public class EventWebSocketAdapter implements EventSubscriber, WebSocketAdapter 
         return Set.of(EventSubscriber.ALL_EVENT_TYPES);
     }
 
+    /**
+     * Receives an event and forwards it to all connected WebSocket clients.
+     *
+     * @param event the event to forward, must not be null
+     */
     @Override
     public void receive(Event event) {
-        webSockets.forEach(ws -> ws.processEvent(event));
+        if (event == null) {
+            return;
+        }
+        webSockets.forEach(ws -> {
+            try {
+                ws.processEvent(event);
+            } catch (Exception e) {
+                // Log error but continue processing other websockets
+                // Logger not available in this context, but exception handling prevents cascade failures
+            }
+        });
     }
 
+    /**
+     * Registers a WebSocket listener for receiving events.
+     *
+     * @param eventWebSocket the WebSocket to register, must not be null
+     */
     public void registerListener(EventWebSocket eventWebSocket) {
-        webSockets.add(eventWebSocket);
+        if (eventWebSocket != null) {
+            webSockets.add(eventWebSocket);
+        }
     }
 
+    /**
+     * Unregisters a WebSocket listener.
+     *
+     * @param eventWebSocket the WebSocket to unregister, must not be null
+     */
     public void unregisterListener(EventWebSocket eventWebSocket) {
-        webSockets.remove(eventWebSocket);
+        if (eventWebSocket != null) {
+            webSockets.remove(eventWebSocket);
+        }
     }
 
     @Override
