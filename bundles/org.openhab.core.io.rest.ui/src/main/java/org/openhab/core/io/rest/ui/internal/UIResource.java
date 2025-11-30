@@ -12,13 +12,11 @@
  */
 package org.openhab.core.io.rest.ui.internal;
 
-import java.security.InvalidParameterException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 import javax.annotation.security.RolesAllowed;
@@ -59,6 +57,8 @@ import org.osgi.service.jaxrs.whiteboard.propertytypes.JSONRequired;
 import org.osgi.service.jaxrs.whiteboard.propertytypes.JaxrsApplicationSelect;
 import org.osgi.service.jaxrs.whiteboard.propertytypes.JaxrsName;
 import org.osgi.service.jaxrs.whiteboard.propertytypes.JaxrsResource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -86,14 +86,20 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @NonNullByDefault
 public class UIResource implements RESTResource {
 
+    private static final Logger logger = LoggerFactory.getLogger(UIResource.class);
+
     /** The URI path to this resource */
     public static final String PATH_UI = "ui";
 
     private final UIComponentRegistryFactory componentRegistryFactory;
     private final TileProvider tileProvider;
 
-    private Map<String, Date> lastModifiedDates = new HashMap<>();
-    private Map<String, RegistryChangeListener<RootUIComponent>> registryChangeListeners = new HashMap<>();
+    /**
+     * Thread-safe maps – ensures safe concurrent access in a typical servlet container.
+     * key = namespace
+     */
+    private final Map<String, Date> lastModifiedDates = new ConcurrentHashMap<>();
+    private final Map<String, RegistryChangeListener<RootUIComponent>> registryChangeListeners = new ConcurrentHashMap<>();
 
     @Activate
     public UIResource( //
@@ -101,14 +107,23 @@ public class UIResource implements RESTResource {
             final @Reference TileProvider tileProvider) {
         this.componentRegistryFactory = componentRegistryFactory;
         this.tileProvider = tileProvider;
+        logger.debug("UIResource activated");
     }
 
     @Deactivate
     public void deactivate() {
-        registryChangeListeners.forEach((n, l) -> {
-            UIComponentRegistry registry = componentRegistryFactory.getRegistry(n);
-            registry.removeRegistryChangeListener(l);
+        registryChangeListeners.forEach((namespace, listener) -> {
+            try {
+                UIComponentRegistry registry = componentRegistryFactory.getRegistry(namespace);
+                registry.removeRegistryChangeListener(listener);
+            } catch (Exception e) {
+                logger.error("Error while removing registry change listener for namespace '{}': {}", namespace,
+                        e.getMessage(), e);
+            }
         });
+        registryChangeListeners.clear();
+        lastModifiedDates.clear();
+        logger.debug("UIResource deactivated and cleaned up");
     }
 
     @GET
@@ -131,29 +146,24 @@ public class UIResource implements RESTResource {
         UIComponentRegistry registry = componentRegistryFactory.getRegistry(namespace);
         Stream<RootUIComponent> components = registry.getAll().stream();
         if (summary != null && summary) {
-            components = components.map(c -> {
+            Stream<RootUIComponent> summaryStream = components.map(c -> {
                 RootUIComponent component = new RootUIComponent(c.getUID(), c.getType());
-                @Nullable
-                Set<String> tags = c.getTags();
-                if (tags != null) {
-                    component.addTags(c.getTags());
-                }
-                @Nullable
+                component.addTags(c.getTags());
                 Date timestamp = c.getTimestamp();
                 if (timestamp != null) {
                     component.setTimestamp(timestamp);
                 }
                 return component;
             });
-            return Response.ok(new Stream2JSONInputStream(components)).build();
+            return Response.ok(new Stream2JSONInputStream(summaryStream)).build();
         } else {
-            if (!registryChangeListeners.containsKey(namespace)) {
-                RegistryChangeListener<RootUIComponent> changeListener = new ResetLastModifiedChangeListener(namespace);
-                registryChangeListeners.put(namespace, changeListener);
-                registry.addRegistryChangeListener(changeListener);
-            }
+            registryChangeListeners.computeIfAbsent(namespace, ns -> {
+                RegistryChangeListener<RootUIComponent> listener = new ResetLastModifiedChangeListener(ns, this);
+                registry.addRegistryChangeListener(listener);
+                return listener;
+            });
 
-            Date lastModifiedDate = Date.from(Instant.now());
+            Date lastModifiedDate;
             if (lastModifiedDates.containsKey(namespace)) {
                 lastModifiedDate = lastModifiedDates.get(namespace);
                 Response.ResponseBuilder responseBuilder = request.evaluatePreconditions(lastModifiedDate);
@@ -162,7 +172,8 @@ public class UIResource implements RESTResource {
                     return responseBuilder.build();
                 }
             } else {
-                lastModifiedDate = Date.from(Instant.now().truncatedTo(ChronoUnit.SECONDS));
+                Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+                lastModifiedDate = Date.from(now);
                 lastModifiedDates.put(namespace, lastModifiedDate);
             }
 
@@ -199,6 +210,7 @@ public class UIResource implements RESTResource {
         UIComponentRegistry registry = componentRegistryFactory.getRegistry(namespace);
         component.updateTimestamp();
         RootUIComponent createdComponent = registry.add(component);
+        resetLastModifiedDate(namespace);
         return Response.ok(createdComponent).build();
     }
 
@@ -219,11 +231,13 @@ public class UIResource implements RESTResource {
             return Response.status(Status.NOT_FOUND).build();
         }
         if (!componentUID.equals(component.getUID())) {
-            throw new InvalidParameterException(
-                    "The component UID in the body of the request should match the UID in the URL");
+            logger.warn("UID mismatch in updateComponent: path='{}' body='{}'", componentUID, component.getUID());
+            return Response.status(Status.BAD_REQUEST)
+                    .entity("The component UID in the body of the request should match the UID in the URL").build();
         }
         component.updateTimestamp();
         registry.update(component);
+        resetLastModifiedDate(namespace);
         return Response.ok(component).build();
     }
 
@@ -243,6 +257,7 @@ public class UIResource implements RESTResource {
             return Response.status(Status.NOT_FOUND).build();
         }
         registry.remove(componentUID);
+        resetLastModifiedDate(namespace);
         return Response.ok().build();
     }
 
@@ -252,29 +267,35 @@ public class UIResource implements RESTResource {
 
     private void resetLastModifiedDate(String namespace) {
         lastModifiedDates.remove(namespace);
+        logger.debug("reset lastModified date for namespace '{}'", namespace);
     }
 
-    private class ResetLastModifiedChangeListener implements RegistryChangeListener<RootUIComponent> {
+    /**
+     * Listener that resets the last-modified timestamp for a namespace on change.
+     */
+    private static class ResetLastModifiedChangeListener implements RegistryChangeListener<RootUIComponent> {
 
-        private String namespace;
+        private final String namespace;
+        private final UIResource resource;
 
-        ResetLastModifiedChangeListener(String namespace) {
+        ResetLastModifiedChangeListener(String namespace, UIResource resource) {
             this.namespace = namespace;
+            this.resource = resource;
         }
 
         @Override
         public void added(RootUIComponent element) {
-            resetLastModifiedDate(namespace);
+            resource.resetLastModifiedDate(namespace);
         }
 
         @Override
         public void removed(RootUIComponent element) {
-            resetLastModifiedDate(namespace);
+            resource.resetLastModifiedDate(namespace);
         }
 
         @Override
         public void updated(RootUIComponent oldElement, RootUIComponent element) {
-            resetLastModifiedDate(namespace);
+            resource.resetLastModifiedDate(namespace);
         }
     }
 }
