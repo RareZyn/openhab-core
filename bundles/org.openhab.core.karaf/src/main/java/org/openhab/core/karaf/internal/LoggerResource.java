@@ -75,8 +75,16 @@ public class LoggerResource implements RESTResource {
 
     private final LogService logService;
 
+    /**
+     * Constructs a new LoggerResource with the specified LogService.
+     *
+     * @param logService the LogService for managing logger configurations, must not be null
+     */
     @Activate
     public LoggerResource(@Reference LogService logService) {
+        if (logService == null) {
+            throw new IllegalArgumentException("LogService cannot be null");
+        }
         this.logService = logService;
     }
 
@@ -90,6 +98,14 @@ public class LoggerResource implements RESTResource {
         return Response.ok(bean).build();
     }
 
+    /**
+     * Modifies or adds a logger configuration.
+     *
+     * @param loggerName the logger name from the path, must not be null
+     * @param logger the logger configuration, must not be null
+     * @param uriInfo the URI information, may be null
+     * @return HTTP response
+     */
     @PUT
     @Path("/{loggerName: \\w(%20|[\\w.-])*}")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -99,7 +115,11 @@ public class LoggerResource implements RESTResource {
     public Response putLoggers(@PathParam("loggerName") @Parameter(description = "logger name") String loggerName,
             @Parameter(description = "logger", required = true) LoggerBean.@Nullable LoggerInfo logger,
             @Context UriInfo uriInfo) {
-        if (logger == null || !BUNDLE_REGEX.matcher(logger.loggerName).matches() || !LOG_LEVELS.contains(logger.level)
+        if (loggerName == null || loggerName.isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+        if (logger == null || logger.loggerName == null || logger.level == null
+                || !BUNDLE_REGEX.matcher(logger.loggerName).matches() || !LOG_LEVELS.contains(logger.level)
                 || !logger.loggerName.equals(loggerName)) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }

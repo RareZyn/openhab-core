@@ -205,7 +205,21 @@ public class FeatureInstaller implements ConfigurationListener {
         processingConfigQueue.set(false);
     }
 
+    /**
+     * Adds an add-on to the configuration.
+     *
+     * @param type the add-on type, must not be null or empty
+     * @param id the add-on ID, must not be null or empty
+     */
     public void addAddon(String type, String id) {
+        if (type == null || type.isEmpty()) {
+            logger.warn("Cannot add add-on: type is null or empty");
+            return;
+        }
+        if (id == null || id.isEmpty()) {
+            logger.warn("Cannot add add-on: id is null or empty");
+            return;
+        }
         try {
             changeAddonConfig(type, id, Collection::add);
         } catch (IOException e) {
@@ -213,7 +227,21 @@ public class FeatureInstaller implements ConfigurationListener {
         }
     }
 
+    /**
+     * Removes an add-on from the configuration.
+     *
+     * @param type the add-on type, must not be null or empty
+     * @param id the add-on ID, must not be null or empty
+     */
     public void removeAddon(String type, String id) {
+        if (type == null || type.isEmpty()) {
+            logger.warn("Cannot remove add-on: type is null or empty");
+            return;
+        }
+        if (id == null || id.isEmpty()) {
+            logger.warn("Cannot remove add-on: id is null or empty");
+            return;
+        }
         try {
             changeAddonConfig(type, id, Collection::remove);
         } catch (IOException e) {
