@@ -82,7 +82,7 @@ public class SerialPortManagerImpl implements SerialPortManager {
                 logger.warn("The provider \"{}\" miss some native code support.", provider.getClass().getSimpleName(),
                         error);
             } catch (final RuntimeException ex) {
-                logger.warn("The provider \"{}\" cannot provide a serial port itendifier for \"{}\".",
+                logger.warn("The provider \"{}\" cannot provide a serial port identifier for \"{}\".",
                         provider.getClass().getSimpleName(), name, ex);
             }
         }
