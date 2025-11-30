@@ -12,19 +12,21 @@
  */
 package org.openhab.core.io.transport.mdns;
 
-import java.util.Hashtable;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Objects;
 
 /**
- * This is a simple data container to keep all details of a service description together.
+ * This is a simple immutable data container a service description.
  *
  * @author Kai Kreuzer - Initial contribution
  */
-public class ServiceDescription {
+public final class ServiceDescription {
 
-    public String serviceType;
-    public String serviceName;
-    public int servicePort;
-    public Hashtable<String, String> serviceProperties;
+    public final String serviceType;
+    public final String serviceName;
+    public final int servicePort;
+    public final Map<String, String> serviceProperties;
 
     /**
      * Constructor for a {@link ServiceDescription}, which takes all details as parameters
@@ -35,53 +37,67 @@ public class ServiceDescription {
      * @param serviceProperties Hashtable service props, like url = "/rest"
      */
     public ServiceDescription(String serviceType, String serviceName, int servicePort,
-            Hashtable<String, String> serviceProperties) {
+            Map<String, String> serviceProperties) {
         this.serviceType = serviceType;
         this.serviceName = serviceName;
         this.servicePort = servicePort;
-        this.serviceProperties = serviceProperties;
+        this.serviceProperties = serviceProperties == null ? Collections.emptyMap()
+                : Collections.unmodifiableMap(serviceProperties);
+    }
+
+    /**
+     * Builder for ServiceDescription
+     *
+     * @return a Builder
+     */
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static final class Builder {
+        private String serviceType;
+        private String serviceName;
+        private int servicePort;
+        private Map<String, String> serviceProperties;
+
+        public Builder withType(String type) {
+            this.serviceType = type;
+            return this;
+        }
+
+        public Builder withName(String name) {
+            this.serviceName = name;
+            return this;
+        }
+
+        public Builder withPort(int port) {
+            this.servicePort = port;
+            return this;
+        }
+
+        public Builder withProperties(Map<String, String> props) {
+            this.serviceProperties = props;
+            return this;
+        }
+
+        public ServiceDescription build() {
+            return new ServiceDescription(serviceType, serviceName, servicePort, serviceProperties);
+        }
     }
 
     @Override
     public int hashCode() {
-        final int prime = 31;
-        int result = 1;
-        result = prime * result + ((serviceName == null) ? 0 : serviceName.hashCode());
-        result = prime * result + servicePort;
-        result = prime * result + ((serviceType == null) ? 0 : serviceType.hashCode());
-        return result;
+        return Objects.hash(serviceType, serviceName, servicePort);
     }
 
     @Override
     public boolean equals(Object obj) {
-        if (this == obj) {
+        if (this == obj)
             return true;
-        }
-        if (obj == null) {
+        if (!(obj instanceof ServiceDescription other))
             return false;
-        }
-        if (getClass() != obj.getClass()) {
-            return false;
-        }
-        ServiceDescription other = (ServiceDescription) obj;
-        if (serviceName == null) {
-            if (other.serviceName != null) {
-                return false;
-            }
-        } else if (!serviceName.equals(other.serviceName)) {
-            return false;
-        }
-        if (servicePort != other.servicePort) {
-            return false;
-        }
-        if (serviceType == null) {
-            if (other.serviceType != null) {
-                return false;
-            }
-        } else if (!serviceType.equals(other.serviceType)) {
-            return false;
-        }
-        return true;
+        return Objects.equals(serviceType, other.serviceType) && Objects.equals(serviceName, other.serviceName)
+                && servicePort == other.servicePort;
     }
 
     @Override

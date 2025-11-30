@@ -15,9 +15,10 @@ package org.openhab.core.io.transport.mdns.internal;
 import java.io.IOException;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
-import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.core.io.transport.mdns.MDNSClient;
 import org.openhab.core.io.transport.mdns.MDNSService;
 import org.openhab.core.io.transport.mdns.ServiceDescription;
@@ -39,16 +40,22 @@ import org.slf4j.LoggerFactory;
 public class MDNSServiceImpl implements MDNSService {
     private final Logger logger = LoggerFactory.getLogger(MDNSServiceImpl.class);
 
-    private @Nullable MDNSClient mdnsClient;
+    private volatile MDNSClient mdnsClient;
 
     private final Set<ServiceDescription> servicesToRegisterQueue = new CopyOnWriteArraySet<>();
+
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "mdns-service-worker");
+        t.setDaemon(true);
+        return t;
+    });
 
     @Reference(cardinality = ReferenceCardinality.OPTIONAL, policy = ReferencePolicy.DYNAMIC)
     protected void setMDNSClient(MDNSClient client) {
         this.mdnsClient = client;
         // register queued services
         if (!servicesToRegisterQueue.isEmpty()) {
-            Executors.newSingleThreadExecutor().execute(() -> {
+            executor.execute(() -> {
                 logger.debug("Registering {} queued services", servicesToRegisterQueue.size());
                 for (ServiceDescription description : servicesToRegisterQueue) {
                     try {
@@ -59,10 +66,10 @@ public class MDNSServiceImpl implements MDNSService {
                             break;
                         }
                     } catch (IOException e) {
-                        logger.error("{}", e.getMessage());
+                        logger.error("Error registering queued service {}: {}", description, e.getMessage(), e);
                     } catch (IllegalStateException e) {
-                        logger.debug("Not registering service {}, because service is already deactivated!",
-                                description.serviceType);
+                        logger.debug("Not registering service {}, because service is already deactivated! {}",
+                                description.serviceType, e.getMessage(), e);
                     }
                 }
                 servicesToRegisterQueue.clear();
@@ -71,8 +78,14 @@ public class MDNSServiceImpl implements MDNSService {
     }
 
     protected void unsetMDNSClient(MDNSClient mdnsClient) {
+        if (this.mdnsClient != null) {
+            try {
+                this.mdnsClient.unregisterAllServices();
+            } catch (Exception e) {
+                logger.debug("Error while unregistering all service from mDNSClient: {}", e.getMessage(), e);
+            }
+        }
         this.mdnsClient = null;
-        mdnsClient.unregisterAllServices();
     }
 
     @Override
@@ -82,14 +95,14 @@ public class MDNSServiceImpl implements MDNSService {
             // queue the service to register it as soon as the mDNS client is available
             servicesToRegisterQueue.add(description);
         } else {
-            Executors.newSingleThreadExecutor().execute(() -> {
+            executor.execute(() -> {
                 try {
                     localClient.registerService(description);
                 } catch (IOException e) {
-                    logger.error("{}", e.getMessage());
+                    logger.error("Error registering service {}: {}", description, e.getMessage(), e);
                 } catch (IllegalStateException e) {
                     logger.debug("Not registering service {}, because service is already deactivated!",
-                            description.serviceType);
+                            description.serviceType, e);
                 }
             });
         }
@@ -97,8 +110,11 @@ public class MDNSServiceImpl implements MDNSService {
 
     @Override
     public void unregisterService(ServiceDescription description) {
-        if (mdnsClient != null) {
-            mdnsClient.unregisterService(description);
+        MDNSClient local = mdnsClient;
+        if (local != null) {
+            local.unregisterService(description);
+        } else {
+            servicesToRegisterQueue.remove(description);
         }
     }
 
@@ -106,17 +122,28 @@ public class MDNSServiceImpl implements MDNSService {
      * This method unregisters all services from Bonjour/MDNS
      */
     protected void unregisterAllServices() {
-        if (mdnsClient != null) {
-            mdnsClient.unregisterAllServices();
+        MDNSClient local = mdnsClient;
+        if (local != null) {
+            local.unregisterAllServices();
         }
     }
 
     @Deactivate
     public void deactivate() {
         unregisterAllServices();
-        if (mdnsClient != null) {
-            mdnsClient.close();
+        MDNSClient local = mdnsClient;
+        if (local != null) {
+            local.close();
             logger.debug("mDNS service has been stopped");
+        }
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(3, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 }
