@@ -26,6 +26,9 @@ import org.osgi.service.component.annotations.Component;
 import gnu.io.rfc2217.TelnetSerialPort;
 
 /**
+ * Serial port provider implementation for RFC2217 (Telnet Serial Port Control Protocol).
+ * This provider supports remote serial ports accessed via TCP/IP using the RFC2217 protocol.
+ * Uses the "rfc2217" protocol scheme for network-based serial port connections.
  *
  * @author Matthias Steigenberger - Initial contribution
  */
@@ -35,18 +38,42 @@ public class RFC2217PortProvider implements SerialPortProvider {
 
     private static final String PROTOCOL = "rfc2217";
 
+    /**
+     * Gets a serial port identifier for the specified RFC2217 port URI.
+     *
+     * @param portName the port URI (e.g., "rfc2217://hostname:port"), must not be null
+     * @return the serial port identifier, or null if the port cannot be created
+     */
     @Override
     public @Nullable SerialPortIdentifier getPortIdentifier(URI portName) {
-        TelnetSerialPort telnetSerialPort = new TelnetSerialPort();
-        telnetSerialPort.setName(portName.toString());
-        return new SerialPortIdentifierImpl(telnetSerialPort, portName);
+        if (portName == null) {
+            return null;
+        }
+        try {
+            TelnetSerialPort telnetSerialPort = new TelnetSerialPort();
+            telnetSerialPort.setName(portName.toString());
+            return new SerialPortIdentifierImpl(telnetSerialPort, portName);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
+    /**
+     * Gets the protocol types that this provider accepts.
+     *
+     * @return a stream containing the "rfc2217" protocol type for network ports
+     */
     @Override
     public Stream<ProtocolType> getAcceptedProtocols() {
         return Stream.of(new ProtocolType(PathType.NET, PROTOCOL));
     }
 
+    /**
+     * Gets all available serial port identifiers.
+     * RFC2217 ports cannot be discovered automatically, so this returns an empty stream.
+     *
+     * @return an empty stream (RFC2217 ports must be specified explicitly via URI)
+     */
     @Override
     public Stream<SerialPortIdentifier> getSerialPortIdentifiers() {
         return Stream.empty();
