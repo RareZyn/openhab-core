@@ -17,12 +17,14 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -108,21 +110,30 @@ public class DslThingFileConverter extends AbstractThingFileGenerator implements
         elementsToGenerate.put(id, model);
     }
 
+    private static final Pattern QUOTE_PATTERN = Pattern.compile(":\"([a-zA-Z0-9_][a-zA-Z0-9_-]*)\"");
+
+    /** Helper method to remove quotes from Thing UID segments */
+    private String removeQuotesFromUID(byte[] data) {
+        String text = new String(data, StandardCharsets.UTF_8);
+        return QUOTE_PATTERN.matcher(text).replaceAll(":$1");
+    }
+
     @Override
     public void generateFileFormat(String id, OutputStream out) {
         ThingModel model = elementsToGenerate.remove(id);
-        if (model != null) {
-            // Double quotes are unexpectedly generated in thing UID when the segment contains a -.
-            // Fix that by removing these double quotes. Requires to first build the generated syntax as a String
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            modelRepository.generateFileFormat(outputStream, "things", model);
-            String syntax = new String(outputStream.toByteArray()).replaceAll(":\"([a-zA-Z0-9_][a-zA-Z0-9_-]*)\"",
-                    ":$1");
-            try {
-                out.write(syntax.getBytes());
-            } catch (IOException e) {
-                logger.warn("Exception when writing the generated syntax {}", e.getMessage());
-            }
+        if (model == null) {
+            return;
+        }
+
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        modelRepository.generateFileFormat(outputStream, "things", model);
+
+        String syntax = removeQuotesFromUID(outputStream.toByteArray());
+
+        try {
+            out.write(syntax.getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            logger.warn("Exception when writing the generated syntax", e);
         }
     }
 
