@@ -112,12 +112,30 @@ public class DslThingFileConverter extends AbstractThingFileGenerator implements
 
     private static final Pattern QUOTE_PATTERN = Pattern.compile(":\"([a-zA-Z0-9_][a-zA-Z0-9_-]*)\"");
 
-    /** Helper method to remove quotes from Thing UID segments */
+    /**
+     * Removes unnecessary double quotes from Thing UID segments in DSL syntax.
+     * Example: :"my-thing" → :my-thing
+     * 
+     * @param data Byte array representing DSL syntax.
+     * @return String with quotes removed from Thing UID segments.
+     */
     private String removeQuotesFromUID(byte[] data) {
         String text = new String(data, StandardCharsets.UTF_8);
         return QUOTE_PATTERN.matcher(text).replaceAll(":$1");
     }
 
+    /**
+     * Generates a DSL Thing file from the stored Thing model for the given ID.
+     * 
+     * Steps:
+     * 1. Retrieves the ThingModel from elementsToGenerate map.
+     * 2. Generates DSL syntax via modelRepository.
+     * 3. Removes unnecessary double quotes from Thing UIDs.
+     * 4. Writes the final syntax to the provided OutputStream.
+     * 
+     * @param id The unique identifier for the Thing generation task.
+     * @param out The OutputStream where the generated DSL content will be written.
+     */
     @Override
     public void generateFileFormat(String id, OutputStream out) {
         ThingModel model = elementsToGenerate.remove(id);
@@ -135,6 +153,22 @@ public class DslThingFileConverter extends AbstractThingFileGenerator implements
         }
     }
 
+    /**
+     * Converts a Thing or Bridge object into a ModelThing/ModelBridge for DSL generation.
+     * Handles:
+     * - Bridge vs regular Thing
+     * - Child Things (if hierarchy is preferred)
+     * - Channels and configuration properties
+     * 
+     * @param thing The Thing or Bridge to convert
+     * @param hideDefaultChannels Whether to hide default channels in output
+     * @param hideDefaultParameters Whether to hide default parameters in output
+     * @param preferPresentationAsTree Whether to use tree structure for hierarchy
+     * @param topLevel Whether this Thing is top-level in the model
+     * @param onlyThings List of Things to include
+     * @param handledThings Set of Things already processed to avoid duplication
+     * @return ModelThing or ModelBridge representing the input Thing
+     */
     private ModelThing buildModelThing(Thing thing, boolean hideDefaultChannels, boolean hideDefaultParameters,
             boolean preferPresentationAsTree, boolean topLevel, List<Thing> onlyThings, Set<Thing> handledThings) {
         ModelThing model;
@@ -215,6 +249,16 @@ public class DslThingFileConverter extends AbstractThingFileGenerator implements
         return modelChannel;
     }
 
+    /**
+     * Converts a configuration parameter (key/value) into a ModelProperty for DSL generation.
+     * Handles special cases:
+     * - Lists: empty lists are ignored
+     * - Double: converted to BigDecimal for DSL compatibility
+     * 
+     * @param key Configuration parameter key
+     * @param value Configuration parameter value
+     * @return ModelProperty or null if value should be ignored
+     */
     private @Nullable ModelProperty buildModelProperty(String key, Object value) {
         ModelProperty property = ThingFactory.eINSTANCE.createModelProperty();
         property.setKey(key);
