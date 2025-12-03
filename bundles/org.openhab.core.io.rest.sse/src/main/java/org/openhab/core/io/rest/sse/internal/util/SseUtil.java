@@ -25,7 +25,7 @@ import org.openhab.core.events.Event;
 import org.openhab.core.io.rest.sse.internal.dto.EventDTO;
 
 /**
- * Utility class containing helper methods for the SSE implementation.
+ * Utility class providing helper methods used by the SSE infrastructure.
  *
  * @author Ivan Iliev - Initial contribution
  * @author Dennis Nobel - Changed EventBean
@@ -33,13 +33,23 @@ import org.openhab.core.io.rest.sse.internal.dto.EventDTO;
  */
 @NonNullByDefault
 public class SseUtil {
+    /** Regex pattern allowing comma-separated tokens with optional "*" wildcard. */
     static final String TOPIC_VALIDATE_PATTERN = "(\\w*\\*?\\/?,?:?-?\\s*)*";
 
+    private SseUtil() {
+    }
+
+    /**
+     * Converts an {@link Event} to an {@link EventDTO}.
+     *
+     * @param event the event to convert
+     * @return the DTO representing the event
+     */
     public static EventDTO buildDTO(final Event event) {
         EventDTO dto = new EventDTO();
-        dto.topic = event.getTopic();
-        dto.type = event.getType();
-        dto.payload = event.getPayload();
+        dto.setTopic(event.getTopic());
+        dto.setType(event.getType());
+        dto.setPayload(event.getPayload());
         return dto;
     }
 
@@ -51,40 +61,39 @@ public class SseUtil {
      * @return a new OutboundEvent
      */
     public static OutboundSseEvent buildEvent(OutboundSseEvent.Builder eventBuilder, EventDTO event) {
-        return eventBuilder.name("message") //
-                .mediaType(MediaType.APPLICATION_JSON_TYPE) //
-                .data(event) //
-                .build();
+        return eventBuilder.name("message").mediaType(MediaType.APPLICATION_JSON_TYPE).data(event).build();
     }
 
     /**
-     * Validates the given topicFilter
+     * Validates the given topicFilter is acceptable for use by SSE.
      *
-     * @param topicFilter
+     * @param topicFilter the topic filter
      * @return true if the given input filter is empty or a valid topic filter string
      *
      */
     public static boolean isValidTopicFilter(@Nullable String topicFilter) {
-        return topicFilter == null || topicFilter.isEmpty() || topicFilter.matches(TOPIC_VALIDATE_PATTERN);
+        return topicFilter == null || topicFilter.isBlank() || topicFilter.matches(TOPIC_VALIDATE_PATTERN);
     }
 
     /**
-     * Splits the given topicFilter at any commas (",") and for each token replaces any wildcards(*) with the regex
-     * pattern (.*)
+     * Converts a comma-separated wildcard topicFilter into a list of regex patterns.
      *
-     * @param topicFilter
-     * @return
+     * @param topicFilter filter expressions
+     * @return list of regex patterns
      */
     public static List<String> convertToRegex(@Nullable String topicFilter) {
         List<String> filters = new ArrayList<>();
 
-        if (topicFilter == null || topicFilter.isEmpty()) {
+        if (topicFilter == null || topicFilter.isBlank()) {
             filters.add(".*");
-        } else {
-            StringTokenizer tokenizer = new StringTokenizer(topicFilter, ",");
-            while (tokenizer.hasMoreElements()) {
-                String regex = tokenizer.nextToken().trim().replace("*", ".*") + "$";
-                filters.add(regex);
+            return filters;
+        }
+
+        StringTokenizer tokenizer = new StringTokenizer(topicFilter, ",");
+        while (tokenizer.hasMoreElements()) {
+            String token = tokenizer.nextToken().trim();
+            if (!token.isEmpty()) {
+                filters.add(token.replace("*", ".*") + "$");
             }
         }
 

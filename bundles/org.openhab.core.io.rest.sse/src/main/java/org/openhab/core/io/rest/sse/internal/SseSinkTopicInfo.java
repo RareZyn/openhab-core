@@ -19,7 +19,7 @@ import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.openhab.core.io.rest.sse.internal.util.SseUtil;
 
 /**
- * The specific information we need to hold for a SSE sink which subscribes to event topics.
+ * Holds topic-matching rules for an SSE sink that subscribes to event topics.
  *
  * @author Markus Rathgeb - Initial contribution
  */

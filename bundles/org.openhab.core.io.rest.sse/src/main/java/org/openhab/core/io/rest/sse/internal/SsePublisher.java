@@ -18,9 +18,18 @@ import org.openhab.core.events.Event;
 /**
  * Marker interface for a publisher of events using SSE.
  *
+ * <p>
+ * Implementations must be thread-safe.
+ * </p>
+ *
  * @author Markus Rathgeb - Initial contribution
  */
 @NonNullByDefault
 public interface SsePublisher {
+    /**
+     * Broadcasts an event to all relevant SSE listeners.
+     *
+     * @param event the event to broadcast
+     */
     void broadcast(final Event event);
 }

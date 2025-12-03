@@ -33,6 +33,7 @@ import org.osgi.service.component.annotations.Reference;
 @NonNullByDefault
 public class SseEventSubscriber implements EventSubscriber {
 
+    /** Listens to ALL event types available **/
     private final Set<String> subscribedEventTypes = Set.of(EventSubscriber.ALL_EVENT_TYPES);
 
     private final SsePublisher ssePublisher;
