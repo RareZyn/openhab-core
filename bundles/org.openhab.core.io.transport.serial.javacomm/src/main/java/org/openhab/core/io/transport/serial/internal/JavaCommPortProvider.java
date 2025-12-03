@@ -33,6 +33,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * Serial port provider implementation using the Java Communications API (javax.comm).
+ * This provider supports local serial ports and uses the "javacomm" protocol scheme.
  *
  * @author Matthias Steigenberger - Initial contribution
  */
@@ -42,23 +44,51 @@ public class JavaCommPortProvider implements SerialPortProvider {
 
     private final Logger logger = LoggerFactory.getLogger(JavaCommPortProvider.class);
 
+    /**
+     * Gets a serial port identifier for the specified port URI.
+     *
+     * @param port the port URI, must not be null
+     * @return the serial port identifier, or null if the port does not exist
+     */
     @Override
     public @Nullable SerialPortIdentifier getPortIdentifier(URI port) {
+        if (port == null) {
+            logger.warn("Port URI is null, cannot get port identifier");
+            return null;
+        }
+        final String path = port.getPath();
+        if (path == null || path.isEmpty()) {
+            logger.warn("Port URI path is null or empty: {}", port);
+            return null;
+        }
         CommPortIdentifier ident;
         try {
-            ident = CommPortIdentifier.getPortIdentifier(port.getPath());
+            ident = CommPortIdentifier.getPortIdentifier(path);
         } catch (javax.comm.NoSuchPortException e) {
-            logger.debug("No SerialPortIdentifier found for: {}", port.getPath());
+            logger.debug("No SerialPortIdentifier found for: {}", path);
+            return null;
+        } catch (Exception e) {
+            logger.warn("Error getting port identifier for: {}", path, e);
             return null;
         }
         return new SerialPortIdentifierImpl(ident);
     }
 
+    /**
+     * Gets the protocol types that this provider accepts.
+     *
+     * @return a stream containing the "javacomm" protocol type for local ports
+     */
     @Override
     public Stream<ProtocolType> getAcceptedProtocols() {
         return Stream.of(new ProtocolType(PathType.LOCAL, "javacomm"));
     }
 
+    /**
+     * Gets all available serial port identifiers from the Java Communications API.
+     *
+     * @return a stream of serial port identifiers for all available serial ports
+     */
     @Override
     public Stream<SerialPortIdentifier> getSerialPortIdentifiers() {
         @SuppressWarnings("unchecked")

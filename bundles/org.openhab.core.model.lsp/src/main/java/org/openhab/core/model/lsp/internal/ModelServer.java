@@ -65,36 +65,72 @@ public class ModelServer {
 
     private final Injector injector;
 
+    /**
+     * Constructs a new ModelServer with the specified dependencies.
+     *
+     * @param scriptServiceUtil the ScriptServiceUtil for script operations, must not be null
+     * @param scriptEngine the ScriptEngine for script execution, must not be null
+     */
     @Activate
     public ModelServer(final @Reference ScriptServiceUtil scriptServiceUtil,
             final @Reference ScriptEngine scriptEngine) {
+        if (scriptServiceUtil == null) {
+            throw new IllegalArgumentException("ScriptServiceUtil cannot be null");
+        }
+        if (scriptEngine == null) {
+            throw new IllegalArgumentException("ScriptEngine cannot be null");
+        }
         this.injector = Guice.createInjector(new RuntimeServerModule(scriptServiceUtil, scriptEngine));
     }
 
+    /**
+     * Activates the Language Server with the specified configuration.
+     *
+     * @param config the configuration map containing port settings, may be null
+     */
     @Activate
     public void activate(Map<String, Object> config) {
         int port = DEFAULT_PORT;
-        try {
-            port = config.containsKey(KEY_PORT) ? Integer.parseInt(config.get(KEY_PORT).toString()) : DEFAULT_PORT;
-        } catch (NumberFormatException e) {
-            logger.warn("Couldn't parse '{}', using default port '{}' for the Language Server instead",
-                    config.get(KEY_PORT), DEFAULT_PORT);
+        if (config != null && config.containsKey(KEY_PORT)) {
+            try {
+                Object portValue = config.get(KEY_PORT);
+                if (portValue != null) {
+                    port = Integer.parseInt(portValue.toString());
+                    if (port < 1 || port > 65535) {
+                        logger.warn("Port value '{}' is out of valid range (1-65535), using default port '{}'", port,
+                                DEFAULT_PORT);
+                        port = DEFAULT_PORT;
+                    }
+                }
+            } catch (NumberFormatException e) {
+                logger.warn("Couldn't parse '{}', using default port '{}' for the Language Server instead",
+                        config.get(KEY_PORT), DEFAULT_PORT);
+            }
         }
         final int serverPort = port;
         pool.submit(() -> listen(serverPort));
     }
 
+    /**
+     * Deactivates the Language Server and closes the server socket.
+     */
     @Deactivate
     public void deactivate() {
         try {
             if (socket != null && !socket.isClosed()) {
                 socket.close();
+                logger.debug("Language Server socket closed");
             }
         } catch (IOException e) {
-            logger.error("Error shutting down the Language Server", e);
+            logger.error("Error shutting down the Language Server: {}", e.getMessage(), e);
         }
     }
 
+    /**
+     * Listens for client connections on the specified port.
+     *
+     * @param port the port number to listen on, must be between 1 and 65535
+     */
     private void listen(int port) {
         try {
             socket = new ServerSocket(port);
@@ -115,21 +151,46 @@ public class ModelServer {
         }
     }
 
+    /**
+     * Handles a client connection by creating a language server instance and processing LSP requests.
+     *
+     * @param client the client socket connection, must not be null
+     */
     private void handleConnection(final Socket client) {
+        if (client == null) {
+            logger.warn("Cannot handle null client connection");
+            return;
+        }
         logger.debug("Client {} connected", client.getRemoteSocketAddress());
         try {
             LanguageServerImpl languageServer = injector.getInstance(LanguageServerImpl.class);
+            if (languageServer == null) {
+                logger.error("Failed to create LanguageServerImpl instance");
+                return;
+            }
             Launcher<LanguageClient> launcher = LSPLauncher.createServerLauncher(languageServer,
                     client.getInputStream(), client.getOutputStream());
             languageServer.connect(launcher.getRemoteProxy());
             Future<?> future = launcher.startListening();
-            future.get();
+            if (future != null) {
+                future.get();
+            }
         } catch (IOException e) {
-            logger.warn("Error communicating with LSP client {}", client.getRemoteSocketAddress());
+            logger.warn("Error communicating with LSP client {}: {}", client.getRemoteSocketAddress(), e.getMessage(),
+                    e);
         } catch (InterruptedException e) {
-            // go on, let the thread finish
+            Thread.currentThread().interrupt();
+            logger.debug("LSP client connection interrupted");
         } catch (ExecutionException e) {
-            logger.error("Error running the Language Server", e);
+            logger.error("Error running the Language Server: {}", e.getMessage(), e);
+        } finally {
+            try {
+                if (client != null && !client.isClosed()) {
+                    client.close();
+                }
+            } catch (IOException e) {
+                logger.debug("Error closing client socket: {}", e.getMessage());
+            }
         }
         logger.debug("Client {} disconnected", client.getRemoteSocketAddress());
     }

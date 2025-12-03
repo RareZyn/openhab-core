@@ -40,7 +40,20 @@ public class ProtocolType {
     private final PathType pathType;
     private final String scheme;
 
+    /**
+     * Constructs a new ProtocolType with the specified path type and scheme.
+     *
+     * @param pathType the path type (NET or LOCAL), must not be null
+     * @param scheme the scheme (e.g., "serial", "rfc2217"), must not be null or empty
+     * @throws IllegalArgumentException if pathType is null or scheme is null or empty
+     */
     public ProtocolType(PathType pathType, String scheme) {
+        if (pathType == null) {
+            throw new IllegalArgumentException("PathType cannot be null");
+        }
+        if (scheme == null || scheme.isEmpty()) {
+            throw new IllegalArgumentException("Scheme cannot be null or empty");
+        }
         this.pathType = pathType;
         this.scheme = scheme;
     }

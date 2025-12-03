@@ -37,7 +37,8 @@ import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 
 /**
- * The {@link EventDTO} is used for serialization and deserialization of events
+ * The {@link ItemEventUtility} provides utility methods for creating item events from EventDTO objects.
+ * Handles parsing and validation of command, state, and time series events for items.
  *
  * @author Stefan Bußweiler - Initial contribution ({@link org.openhab.core.items.events.ItemEventFactory})
  * @author Jan N. Klug - Initial contribution
@@ -50,12 +51,35 @@ public class ItemEventUtility {
     private final Gson gson;
     private final ItemRegistry itemRegistry;
 
+    /**
+     * Constructs a new ItemEventUtility with the specified Gson instance and ItemRegistry.
+     *
+     * @param gson the Gson instance for JSON parsing, must not be null
+     * @param itemRegistry the ItemRegistry for looking up items, must not be null
+     */
     public ItemEventUtility(Gson gson, ItemRegistry itemRegistry) {
+        if (gson == null) {
+            throw new IllegalArgumentException("Gson cannot be null");
+        }
+        if (itemRegistry == null) {
+            throw new IllegalArgumentException("ItemRegistry cannot be null");
+        }
         this.gson = gson;
         this.itemRegistry = itemRegistry;
     }
 
+    /**
+     * Creates a command event from an EventDTO.
+     *
+     * @param eventDTO the event DTO containing command information, must not be null
+     * @return the created command event
+     * @throws EventProcessingException if the event cannot be processed (invalid topic, incompatible type, etc.)
+     */
+
     public Event createCommandEvent(EventDTO eventDTO) throws EventProcessingException {
+        if (eventDTO == null) {
+            throw new EventProcessingException("EventDTO cannot be null");
+        }
         Matcher matcher = getTopicMatcher(eventDTO.topic, "command");
         Item item = getItem(matcher.group("entity"));
         Type command = parseType(eventDTO.payload);
@@ -68,7 +92,17 @@ public class ItemEventUtility {
         throw new EventProcessingException("Incompatible datatype, rejected.");
     }
 
+    /**
+     * Creates a state event from an EventDTO.
+     *
+     * @param eventDTO the event DTO containing state information, must not be null
+     * @return the created state event
+     * @throws EventProcessingException if the event cannot be processed (invalid topic, incompatible type, etc.)
+     */
     public Event createStateEvent(EventDTO eventDTO) throws EventProcessingException {
+        if (eventDTO == null) {
+            throw new EventProcessingException("EventDTO cannot be null");
+        }
         Matcher matcher = getTopicMatcher(eventDTO.topic, "state");
         Item item = getItem(matcher.group("entity"));
         Type state = parseType(eventDTO.payload);
@@ -81,7 +115,17 @@ public class ItemEventUtility {
         throw new EventProcessingException("Incompatible datatype, rejected.");
     }
 
+    /**
+     * Creates a time series event from an EventDTO.
+     *
+     * @param eventDTO the event DTO containing time series information, must not be null
+     * @return the created time series event
+     * @throws EventProcessingException if the event cannot be processed (invalid topic, invalid payload, etc.)
+     */
     public Event createTimeSeriesEvent(EventDTO eventDTO) throws EventProcessingException {
+        if (eventDTO == null) {
+            throw new EventProcessingException("EventDTO cannot be null");
+        }
         Matcher matcher = getTopicMatcher(eventDTO.topic, "timeseries");
         Item item = getItem(matcher.group("entity"));
         TimeSeries timeSeries = parseTimeSeries(eventDTO.payload);
@@ -155,7 +199,21 @@ public class ItemEventUtility {
         return parseType(bean.type, bean.value);
     }
 
+    /**
+     * Parses a Type from a type name and value string.
+     *
+     * @param type the type name (without "Type" suffix), must not be null
+     * @param value the value string to parse, must not be null
+     * @return the parsed Type
+     * @throws EventProcessingException if the type cannot be parsed
+     */
     private Type parseType(String type, String value) throws EventProcessingException {
+        if (type == null) {
+            throw new EventProcessingException("Type cannot be null");
+        }
+        if (value == null) {
+            throw new EventProcessingException("Value cannot be null");
+        }
         String simpleClassName = type + TYPE_POSTFIX;
         Type returnType;
 

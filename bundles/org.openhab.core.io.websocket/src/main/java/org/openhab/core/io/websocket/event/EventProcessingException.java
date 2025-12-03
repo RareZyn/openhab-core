@@ -17,7 +17,8 @@ import java.io.Serial;
 import org.eclipse.jdt.annotation.NonNullByDefault;
 
 /**
- * The {@link EventProcessingException} is thrown when processing of incoming events fails
+ * The {@link EventProcessingException} is thrown when processing of incoming events fails.
+ * This exception is used to indicate errors during event deserialization, validation, or processing.
  *
  * @author Jan N. Klug - Initial contribution
  */
@@ -26,7 +27,22 @@ public class EventProcessingException extends Exception {
     @Serial
     private static final long serialVersionUID = 1L;
 
+    /**
+     * Constructs a new EventProcessingException with the specified detail message.
+     *
+     * @param message the detail message describing the processing failure, must not be null
+     */
     public EventProcessingException(String message) {
         super(message);
+    }
+
+    /**
+     * Constructs a new EventProcessingException with the specified detail message and cause.
+     *
+     * @param message the detail message describing the processing failure, must not be null
+     * @param cause the cause of the exception, may be null
+     */
+    public EventProcessingException(String message, Throwable cause) {
+        super(message, cause);
     }
 }

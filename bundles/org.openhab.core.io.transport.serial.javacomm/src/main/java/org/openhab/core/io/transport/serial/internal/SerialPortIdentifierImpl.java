@@ -32,19 +32,37 @@ public class SerialPortIdentifierImpl implements SerialPortIdentifier {
     final CommPortIdentifier id;
 
     /**
-     * Constructor.
+     * Constructs a new SerialPortIdentifierImpl wrapper around a Java Communications API port identifier.
      *
-     * @param id the underlying comm port identifier implementation
+     * @param id the underlying comm port identifier implementation, must not be null
+     * @throws IllegalArgumentException if id is null
      */
     public SerialPortIdentifierImpl(final CommPortIdentifier id) {
+        if (id == null) {
+            throw new IllegalArgumentException("CommPortIdentifier cannot be null");
+        }
         this.id = id;
     }
 
+    /**
+     * Gets the name of the serial port.
+     *
+     * @return the port name, or an empty string if the name is null
+     */
     @Override
     public String getName() {
         final String name = id.getName();
         return name != null ? name : "";
     }
+
+    /**
+     * Opens the serial port for communication.
+     *
+     * @param owner the name of the application that will own the port
+     * @param timeout the timeout in milliseconds to wait for the port to become available
+     * @return the opened serial port
+     * @throws PortInUseException if the port is already in use by another application
+     */
 
     @Override
     public SerialPort open(String owner, int timeout) throws PortInUseException {

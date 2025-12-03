@@ -26,19 +26,33 @@ public class SerialPortEventImpl implements SerialPortEvent {
     private final gnu.io.SerialPortEvent event;
 
     /**
-     * Constructor.
+     * Constructs a new SerialPortEventImpl wrapper around an RXTX serial port event.
      *
-     * @param event the underlying event implementation
+     * @param event the underlying event implementation, must not be null
+     * @throws IllegalArgumentException if event is null
      */
     public SerialPortEventImpl(final gnu.io.SerialPortEvent event) {
+        if (event == null) {
+            throw new IllegalArgumentException("SerialPortEvent cannot be null");
+        }
         this.event = event;
     }
 
+    /**
+     * Gets the event type from the underlying serial port event.
+     *
+     * @return the event type code
+     */
     @Override
     public int getEventType() {
         return event.getEventType();
     }
 
+    /**
+     * Gets the new value associated with the serial port event.
+     *
+     * @return the new boolean value
+     */
     @Override
     public boolean getNewValue() {
         return event.getNewValue();
