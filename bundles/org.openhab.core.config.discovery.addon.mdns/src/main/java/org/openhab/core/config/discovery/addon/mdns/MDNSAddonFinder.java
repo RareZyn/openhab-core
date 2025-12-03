@@ -18,8 +18,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -69,9 +72,32 @@ public class MDNSAddonFinder extends BaseAddonFinder implements ServiceListener 
     private final Map<String, ServiceInfo> services = new ConcurrentHashMap<>();
     private MDNSClient mdnsClient;
 
+    // [REENGINEERED] Add a Queue for batch processing
+    private final BlockingQueue<ServiceInfo> processingQueue = new LinkedBlockingQueue<>();
+
     @Activate
     public MDNSAddonFinder(@Reference MDNSClient mdnsClient) {
         this.mdnsClient = mdnsClient;
+        // [REENGINEERED] Start the batch processor thread
+        startBatchProcessor();
+    }
+
+    private void startBatchProcessor() {
+        scheduler.scheduleWithFixedDelay(() -> {
+            try {
+                // Process up to 50 items at once to avoid locking the map too long
+                int processed = 0;
+                while (!processingQueue.isEmpty() && processed < 50) {
+                    ServiceInfo info = processingQueue.poll();
+                    if (info != null) {
+                        internalAddService(info, true); // true because queue implies resolved/added
+                    }
+                    processed++;
+                }
+            } catch (Exception e) {
+                logger.error("Error in mDNS batch processor", e);
+            }
+        }, 100, 500, TimeUnit.MILLISECONDS); // Check every 500ms
     }
 
     /**
@@ -79,8 +105,15 @@ public class MDNSAddonFinder extends BaseAddonFinder implements ServiceListener 
      *
      * @param service the mDNS service to be added.
      * @param isResolved indicates if mDNS has fully resolved the service information.
+     * 
+     *            Modify addService (or the callback methods) to push to the queue instead of processing immediately.
      */
     public void addService(ServiceInfo service, boolean isResolved) {
+        // Instead of immediate put(), we offer to queue
+        processingQueue.offer(service);
+    }
+
+    private void internalAddService(ServiceInfo service, boolean isResolved) {
         String qualifiedName = service.getQualifiedName();
         if (isResolved || !services.containsKey(qualifiedName)) {
             if (services.put(qualifiedName, service) == null) {
