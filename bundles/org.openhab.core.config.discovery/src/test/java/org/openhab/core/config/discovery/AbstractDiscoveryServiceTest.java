@@ -16,6 +16,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.collection.IsMapContaining.hasEntry;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 import java.time.Instant;
 import java.util.Collection;
@@ -68,6 +69,38 @@ public class AbstractDiscoveryServiceTest implements DiscoveryListener {
     private static final String PROPERTY_LABEL3 = "Label from property (parameters 50 and number)";
     private static final String PAIRING_CODE_LABEL = "Pairing Code";
     private static final String PAIRING_CODE_DESCR = "The pairing code";
+
+    @Test
+    public void testThrottlingBehavior() throws InterruptedException {
+        // 1. Setup
+        TestDiscoveryService service = new TestDiscoveryService(i18nProvider, localeProvider);
+        DiscoveryListener mockListener = mock(DiscoveryListener.class);
+        service.addDiscoveryListener(mockListener);
+
+        // 2. Prepare a Mock Result (Crucial: Force Flag to NOT be NEW)
+        DiscoveryResult result = mock(DiscoveryResult.class);
+        when(result.getThingUID()).thenReturn(THING_UID1);
+        when(result.getLabel()).thenReturn("Throttled Device");
+        // This is the key fix: If it's IGNORED (or an update), it should be throttled.
+        when(result.getFlag()).thenReturn(DiscoveryResultFlag.IGNORED);
+
+        // 3. Act - Trigger discovery TWICE instantly
+        service.thingDiscovered(result); // 1st call -> Cache miss -> Notify -> Cache update
+        service.thingDiscovered(result); // 2nd call -> Cache hit (<2000ms) & Not NEW -> Return (Throttle)
+
+        // 4. Assert - Listener should have been called ONLY ONCE
+        verify(mockListener, times(1)).thingDiscovered(any(), eq(result));
+
+        // 5. Act - Wait for the throttle period to expire
+        // (Sleep slightly longer than MIN_REPORT_INTERVAL_MS = 2000)
+        Thread.sleep(2100);
+
+        // 6. Act - Trigger again
+        service.thingDiscovered(result); // 3rd call -> Cache expired -> Notify -> Cache update
+
+        // 7. Assert - Now total calls should be 2
+        verify(mockListener, times(2)).thingDiscovered(any(), eq(result));
+    }
 
     private TranslationProvider i18nProvider = new TranslationProvider() {
         @Override

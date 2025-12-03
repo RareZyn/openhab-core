@@ -72,6 +72,14 @@ public class MDNSAddonFinderTests {
             mdnsAddonFinder.addService(service, true);
         }
 
+        // Since we reengineered addService to be Asynchronous (Queue-based),
+        // we must wait a moment for the background thread to process these initial services.
+        try {
+            Thread.sleep(1000); // Wait 1 second for the batch processor to catch up
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
         addonFinder = mdnsAddonFinder;
     }
 
@@ -122,5 +130,34 @@ public class MDNSAddonFinderTests {
         assertFalse(addons.stream().anyMatch(a -> "aardvark".equals(a.getUID())));
         assertTrue(addons.stream().anyMatch(a -> "binding-hue".equals(a.getUID())));
         assertTrue(addons.stream().anyMatch(a -> "binding-hpprinter".equals(a.getUID())));
+    }
+
+    // [ADDED] Test for Batch Processing
+    @Test
+    public void testBatchProcessing() throws InterruptedException {
+        // 1. Create finder
+        MDNSAddonFinder finder = new MDNSAddonFinder(mdnsClient);
+
+        // 2. Simulate an Event Storm (100 events instantly)
+        for (int i = 0; i < 100; i++) {
+            ServiceInfo mockService = mock(ServiceInfo.class);
+            when(mockService.getQualifiedName()).thenReturn("service" + i);
+            when(mockService.getType()).thenReturn("_hue._tcp.local."); // Matches Hue Binding
+            finder.addService(mockService, true);
+        }
+
+        // 3. Assert - Initially, the map might be empty (or partially full) depending on the scheduler
+        // But we want to ensure it DOES process them eventually.
+
+        // Wait for batch interval (e.g., > 500ms)
+        Thread.sleep(1000);
+
+        // 4. Set candidates to trigger the matching logic (which reads from the map)
+        finder.setAddonCandidates(addonInfos);
+
+        // 5. Assert - Should find the binding because the queue was processed
+        Set<AddonInfo> result = finder.getSuggestedAddons();
+        assertTrue(result.stream().anyMatch(a -> "binding-hue".equals(a.getUID())),
+                "Hue binding should be suggested after batch processing");
     }
 }

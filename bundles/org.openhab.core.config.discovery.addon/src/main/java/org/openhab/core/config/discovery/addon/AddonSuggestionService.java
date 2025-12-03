@@ -14,7 +14,6 @@ package org.openhab.core.config.discovery.addon;
 
 import static org.openhab.core.config.discovery.addon.AddonFinderConstants.*;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -22,6 +21,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
@@ -59,10 +59,13 @@ public class AddonSuggestionService {
     private final Set<AddonInfoProvider> addonInfoProviders = ConcurrentHashMap.newKeySet();
 
     // All access must be guarded by "addonFinders"
-    private final List<AddonFinder> addonFinders = new ArrayList<>();
+    // private final List<AddonFinder> addonFinders = new ArrayList<>();
     private final LocaleProvider localeProvider;
     private volatile @Nullable AddonFinderService addonFinderService;
     private final Map<String, Boolean> baseFinderConfig = new ConcurrentHashMap<>();
+
+    // [REENGINEERED] Change from ArrayList to CopyOnWriteArrayList for thread safety without blocking
+    private final List<AddonFinder> addonFinders = new CopyOnWriteArrayList<>();
 
     @Activate
     public AddonSuggestionService(@Reference LocaleProvider localeProvider, Map<String, Object> config) {
@@ -73,9 +76,12 @@ public class AddonSuggestionService {
 
     @Deactivate
     public void deactivate() {
-        synchronized (addonFinders) {
-            addonFinders.clear();
-        }
+        // synchronized (addonFinders) {
+        // addonFinders.clear();
+        // }
+        // addonInfoProviders.clear();
+        // [REENGINEERED] No synchronization needed
+        addonFinders.clear();
         addonInfoProviders.clear();
     }
 
@@ -167,16 +173,21 @@ public class AddonSuggestionService {
 
     @Reference(cardinality = ReferenceCardinality.MULTIPLE, policy = ReferencePolicy.DYNAMIC)
     public void addAddonFinder(AddonFinder addonFinder) {
-        synchronized (addonFinders) {
-            addonFinders.add(addonFinder);
-        }
+        // synchronized (addonFinders) {
+        // addonFinders.add(addonFinder);
+        // }
+        // changed();
+        // [REENGINEERED] No synchronization needed; safe for concurrent access
+        addonFinders.add(addonFinder);
         changed();
     }
 
     public void removeAddonFinder(AddonFinder addonFinder) {
-        synchronized (addonFinders) {
-            addonFinders.remove(addonFinder);
-        }
+        // synchronized (addonFinders) {
+        // addonFinders.remove(addonFinder);
+        // }
+        // [REENGINEERED] No synchronization needed
+        addonFinders.remove(addonFinder);
     }
 
     private void changed() {
@@ -189,9 +200,17 @@ public class AddonSuggestionService {
     }
 
     public Set<AddonInfo> getSuggestedAddons(@Nullable Locale locale) {
-        synchronized (addonFinders) {
-            return addonFinders.stream().filter(this::isFinderEnabled).map(f -> f.getSuggestedAddons())
-                    .flatMap(Collection::stream).collect(Collectors.toSet());
-        }
+        // synchronized (addonFinders) {
+        // return addonFinders.stream().filter(this::isFinderEnabled).map(f -> f.getSuggestedAddons())
+        // .flatMap(Collection::stream).collect(Collectors.toSet());
+        // }
+
+        // [REENGINEERED] Removed 'synchronized (addonFinders)' block.
+        // This prevents a slow finder from blocking the entire service management.
+        return addonFinders.stream().filter(this::isFinderEnabled).map(f -> f.getSuggestedAddons()) // This can now run
+                                                                                                    // concurrently
+                                                                                                    // without locking
+                                                                                                    // the list
+                .flatMap(Collection::stream).collect(Collectors.toSet());
     }
 }

@@ -19,9 +19,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.junit.jupiter.api.Test;
@@ -84,5 +87,47 @@ public class SddpAddonFinderTests {
         finder.deviceRemoved(device);
         suggestions = finder.getSuggestedAddons();
         assertTrue(suggestions.isEmpty());
+    }
+
+    @Test
+    public void testConcurrentDeviceUpdates() throws InterruptedException {
+        SddpAddonFinder finder = new SddpAddonFinder(mock(SddpDiscoveryService.class));
+        finder.setAddonCandidates(createAddonInfos());
+
+        AtomicBoolean running = new AtomicBoolean(true);
+        CountDownLatch latch = new CountDownLatch(2);
+
+        // Thread 1: The Network (Adding devices)
+        Thread networkThread = new Thread(() -> {
+            try { // [ADDED TRY/CATCH to suppress sleep interrupt]
+                for (int i = 0; i < 1000; i++) {
+                    Map<String, String> fields = new HashMap<>(DEVICE_FIELDS);
+                    fields.put("Host", "\"JVC-" + i + "\"");
+                    finder.deviceAdded(new SddpDevice(fields, false));
+                    try {
+                        Thread.sleep(1);
+                    } catch (Exception e) {
+                    }
+                }
+            } finally {
+                running.set(false);
+                latch.countDown();
+            }
+        });
+
+        // Thread 2: The UI (Reading suggestions)
+        Thread uiThread = new Thread(() -> {
+            try {
+                while (running.get()) {
+                    finder.getSuggestedAddons();
+                }
+            } finally {
+                latch.countDown();
+            }
+        });
+
+        networkThread.start();
+        uiThread.start();
+        latch.await();
     }
 }

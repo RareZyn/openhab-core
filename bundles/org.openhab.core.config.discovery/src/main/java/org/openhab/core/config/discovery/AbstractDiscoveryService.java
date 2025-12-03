@@ -12,6 +12,7 @@
  */
 package org.openhab.core.config.discovery;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
@@ -20,6 +21,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -54,6 +56,12 @@ import org.slf4j.LoggerFactory;
  */
 @NonNullByDefault
 public abstract class AbstractDiscoveryService implements DiscoveryService {
+
+    // [ADDED] Define the minimum silence period (e.g., 2 seconds) to prevent flooding
+    private static final long MIN_REPORT_INTERVAL_MS = 2000;
+
+    // [ADDED] In-memory cache to track when we last notified listeners about a specific Thing
+    private final Map<ThingUID, Instant> lastReportedTime = new ConcurrentHashMap<>();
 
     private static final String DISCOVERY_THREADPOOL_NAME = "discovery";
 
@@ -357,6 +365,27 @@ public abstract class AbstractDiscoveryService implements DiscoveryService {
      * @param discoveryResult Holds the information needed to identify the discovered device.
      */
     protected void thingDiscovered(final DiscoveryResult discoveryResult) {
+        // [REENGINEERED START] implementation of Throttling Pattern
+        ThingUID uid = discoveryResult.getThingUID();
+        Instant now = Instant.now();
+        Instant lastReport = lastReportedTime.get(uid);
+
+        // Check if the update is happening too fast (less than 2 seconds since last one)
+        boolean isFrequentUpdate = lastReport != null
+                && Duration.between(lastReport, now).toMillis() < MIN_REPORT_INTERVAL_MS;
+
+        // CRITICAL LOGIC:
+        // We drop the event ONLY if it is frequent AND it is not flagged as a "NEW" discovery.
+        // We respect the NEW flag because the user needs to see new devices immediately.
+        if (isFrequentUpdate && discoveryResult.getFlag() != DiscoveryResultFlag.NEW) {
+            logger.trace("Throttling discovery result for {} as it was reported less than {}ms ago.", uid,
+                    MIN_REPORT_INTERVAL_MS);
+            return; // EXIT EARLY - Prevents I/O and Event Bus stress
+        }
+
+        // Update the cache with the current time
+        lastReportedTime.put(uid, now);
+        // [REENGINEERED END]
         final DiscoveryResult discoveryResultNew = getLocalizedDiscoveryResult(discoveryResult,
                 FrameworkUtil.getBundle(this.getClass()));
         for (DiscoveryListener discoveryListener : discoveryListeners) {
@@ -380,6 +409,9 @@ public abstract class AbstractDiscoveryService implements DiscoveryService {
      * @param thingUID The UID of the removed thing.
      */
     protected void thingRemoved(ThingUID thingUID) {
+        // [ADDED] Remove from throttle cache to prevent memory leaks
+        lastReportedTime.remove(thingUID);
+
         for (DiscoveryListener discoveryListener : discoveryListeners) {
             try {
                 discoveryListener.thingRemoved(this, thingUID);

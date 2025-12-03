@@ -78,7 +78,9 @@ public class UsbAddonFinder extends BaseAddonFinder implements UsbSerialDiscover
         usbSerialDiscovery.doSingleScan();
     }
 
-    protected synchronized void removeUsbSerialDiscovery(UsbSerialDiscovery usbSerialDiscovery) {
+    // [REENGINEERED] Removed 'synchronized' keyword to prevent blocking I/O (Thread Locking)
+    // The CopyOnWriteArraySet handles concurrency safely without blocking the whole object.
+    protected void removeUsbSerialDiscovery(UsbSerialDiscovery usbSerialDiscovery) {
         usbSerialDiscovery.unregisterDiscoveryListener(this);
         usbSerialDiscoveries.remove(usbSerialDiscovery);
     }

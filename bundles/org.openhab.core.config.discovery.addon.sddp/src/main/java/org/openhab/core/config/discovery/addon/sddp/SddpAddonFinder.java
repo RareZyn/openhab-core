@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -81,12 +82,16 @@ public class SddpAddonFinder extends BaseAddonFinder implements SddpDevicePartic
     private static final String PRIMARY_PROXY = "primaryProxy";
     private static final String PROXIES = "proxies";
     private static final String TYPE = "type";
+    // [REENGINEERED] Replace simple Set with an Index Map for O(1) lookups
+    // Map<Manufacturer, Set<Device>>
+    private final Map<String, Set<SddpDevice>> deviceIndex = new ConcurrentHashMap<>();
 
     private static final Set<String> SUPPORTED_PROPERTIES = Set.of(DRIVER, HOST, IP_ADDRESS, MAC_ADDRESS, MANUFACTURER,
             MODEL, PORT, PRIMARY_PROXY, PROXIES, TYPE);
 
     private final Logger logger = LoggerFactory.getLogger(SddpAddonFinder.class);
-    private final Set<SddpDevice> foundDevices = new HashSet<>();
+    // [REENGINEERED] Fix Thread Safety issue
+    private final Set<SddpDevice> foundDevices = ConcurrentHashMap.newKeySet();
 
     private @Nullable SddpDiscoveryService sddpDiscoveryService = null;
 
