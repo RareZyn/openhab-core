@@ -2,7 +2,6 @@ Alligns with our narrative of fixing "Blocking I/O" and "Performance" issues, sp
  "noisy" mDNS networks.
 
 1. ***The Issue to Address***
-Legacy Characteristic ***#15: Uncontrolled Event Propagation (Event Storms)***.
 ***The Problem:*** The MDNSAddonFinder listens for mDNS service events. When a device appears on the network, serviceAdded() or serviceResolved() is called.
 
 ***The Bottleneck:*** On a network with many IoT devices (or during startup when everything announces itself), these callbacks fire rapidly.
