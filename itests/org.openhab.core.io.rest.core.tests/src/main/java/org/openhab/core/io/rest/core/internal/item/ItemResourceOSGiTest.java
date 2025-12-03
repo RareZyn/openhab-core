@@ -14,6 +14,7 @@ package org.openhab.core.io.rest.core.internal.item;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.collection.IsCollectionWithSize.hasSize;
 import static org.hamcrest.core.IsIterableContaining.hasItems;
 import static org.junit.jupiter.api.Assertions.*;
@@ -25,6 +26,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -197,6 +199,23 @@ public class ItemResourceOSGiTest extends JavaOSGiTest {
         response = itemResource.getItems(uriInfoMock, httpHeadersMock, request, null, null, "MyTag", null, false, false,
                 null, false);
         assertThat(readItemNamesFromResponse(response), hasSize(0));
+    }
+
+    @Test
+    public void addMultipleTagsAtOnce() throws Exception {
+        SwitchItem switchItem = new SwitchItem("Switch");
+        managedItemProvider.add(switchItem);
+        List<String> tagsToAdd = Arrays.asList("Tag1", "Tag2", "Tag3");
+
+        // Call the new addTags method
+        Response response = itemResource.addTags("Switch", tagsToAdd);
+
+        // Check HTTP response
+        assertThat(response.getStatus(), org.hamcrest.Matchers.equalTo(200));
+
+        // Verify that all tags were added to the item
+        assertThat(switchItem.getTags(), hasSize(3));
+        assertThat(switchItem.getTags(), containsInAnyOrder("Tag1", "Tag2", "Tag3"));
     }
 
     @Test
