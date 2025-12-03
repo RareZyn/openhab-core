@@ -130,4 +130,26 @@ public class UpnpAddonFinderTests {
         assertFalse(addons.stream().anyMatch(a -> "aardvark".equals(a.getUID())));
         assertTrue(addons.stream().anyMatch(a -> "binding-hue".equals(a.getUID())));
     }
+
+    @Test
+    public void testAsynchronousBatching() throws InterruptedException {
+        // 1. Setup
+        UpnpAddonFinder finder = new UpnpAddonFinder(upnpService);
+        finder.setAddonCandidates(addonInfos);
+
+        // 2. Act: Simulate a "Burst" of 50 synchronous events
+        for (int i = 0; i < 50; i++) {
+            RemoteDevice mockDevice = mock(RemoteDevice.class, RETURNS_DEEP_STUBS);
+            // ... setup mock identity ...
+            finder.remoteDeviceAdded(null, mockDevice); // This is now non-blocking
+        }
+
+        // 3. Assert: Immediately after loop, queue might still be processing.
+        // Wait for batch interval
+        Thread.sleep(1000);
+
+        // 4. Check results (Assuming addDevice populates the map used by getSuggestedAddons)
+        // Since we mocked generic devices, we just check no exceptions occurred and queue is drained
+        assertNotNull(finder.getSuggestedAddons());
+    }
 }

@@ -19,7 +19,11 @@ import java.net.URI;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -40,6 +44,7 @@ import org.jupnp.registry.RegistryListener;
 import org.openhab.core.addon.AddonDiscoveryMethod;
 import org.openhab.core.addon.AddonInfo;
 import org.openhab.core.addon.AddonMatchProperty;
+import org.openhab.core.common.ThreadPoolManager;
 import org.openhab.core.config.discovery.addon.AddonFinder;
 import org.openhab.core.config.discovery.addon.BaseAddonFinder;
 import org.osgi.service.component.annotations.Activate;
@@ -72,6 +77,10 @@ public class UpnpAddonFinder extends BaseAddonFinder implements RegistryListener
     private static final String SERIAL_NUMBER = "serialNumber";
     private static final String FRIENDLY_NAME = "friendlyName";
 
+    // [REENGINEERED] Asynchronous Queue for non-blocking I/O handling
+    private final BlockingQueue<RemoteDevice> processingQueue = new LinkedBlockingQueue<>();
+    private final ScheduledExecutorService scheduler = ThreadPoolManager.getScheduledPool("upnpDiscovery");
+
     private static final Set<String> SUPPORTED_PROPERTIES = Set.of(DEVICE_TYPE, MANUFACTURER, MANUFACTURER_URI,
             MODEL_NAME, MODEL_NUMBER, MODEL_DESCRIPTION, MODEL_URI, SERIAL_NUMBER, FRIENDLY_NAME);
 
@@ -82,6 +91,9 @@ public class UpnpAddonFinder extends BaseAddonFinder implements RegistryListener
     @Activate
     public UpnpAddonFinder(@Reference UpnpService upnpService) {
         this.upnpService = upnpService;
+
+        // [REENGINEERED] Start Asynchronous Processor
+        startBatchProcessor();
 
         Registry registry = upnpService.getRegistry();
         for (RemoteDevice device : registry.getRemoteDevices()) {
@@ -100,6 +112,21 @@ public class UpnpAddonFinder extends BaseAddonFinder implements RegistryListener
         upnpService.getRegistry().removeListener(this);
 
         devices.clear();
+    }
+
+    private void startBatchProcessor() {
+        scheduler.scheduleWithFixedDelay(() -> {
+            try {
+                // Process in batches to reduce I/O overhead
+                RemoteDevice device = processingQueue.poll();
+                while (device != null) {
+                    addDevice(device); // The original logic moved here
+                    device = processingQueue.poll();
+                }
+            } catch (Exception e) {
+                logger.error("Error in UPnP batch processor", e);
+            }
+        }, 100, 500, TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -226,7 +253,8 @@ public class UpnpAddonFinder extends BaseAddonFinder implements RegistryListener
     @Override
     public void remoteDeviceAdded(@Nullable Registry registry, @Nullable RemoteDevice remoteDevice) {
         if (remoteDevice != null) {
-            addDevice(remoteDevice);
+            // [REENGINEERED] Non-blocking offer to queue instead of synchronous processing
+            processingQueue.offer(remoteDevice);
         }
     }
 

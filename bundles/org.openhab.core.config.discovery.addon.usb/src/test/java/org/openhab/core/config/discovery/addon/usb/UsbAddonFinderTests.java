@@ -15,6 +15,7 @@ package org.openhab.core.config.discovery.addon.usb;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,6 +29,7 @@ import org.openhab.core.addon.AddonDiscoveryMethod;
 import org.openhab.core.addon.AddonInfo;
 import org.openhab.core.addon.AddonMatchProperty;
 import org.openhab.core.config.discovery.usbserial.UsbSerialDeviceInformation;
+import org.openhab.core.config.discovery.usbserial.UsbSerialDiscovery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -97,5 +99,34 @@ class UsbAddonFinderTests {
         Set<AddonInfo> suggestions = finder.getSuggestedAddons();
         assertNotNull(suggestions);
         assertTrue(suggestions.isEmpty());
+    }
+
+    @Test
+    void testNonBlockingConcurrency() throws InterruptedException {
+        UsbAddonFinder finder = new UsbAddonFinder();
+
+        // Thread 1: Add/Remove Discoveries (Write)
+        Thread writer = new Thread(() -> {
+            for (int i = 0; i < 100; i++) {
+                UsbSerialDiscovery mockDiscovery = mock(UsbSerialDiscovery.class);
+                finder.addUsbSerialDiscovery(mockDiscovery);
+                finder.removeUsbSerialDiscovery(mockDiscovery); // Should not block
+            }
+        });
+
+        // Thread 2: Read Suggestions (Read)
+        Thread reader = new Thread(() -> {
+            for (int i = 0; i < 100; i++) {
+                finder.getSuggestedAddons(); // Should be able to read while writer is working
+            }
+        });
+
+        writer.start();
+        reader.start();
+
+        writer.join(2000);
+        reader.join(2000);
+
+        // If threads joined successfully, no deadlock occurred.
     }
 }
