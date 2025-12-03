@@ -23,6 +23,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
@@ -79,6 +82,66 @@ public class AddonSuggestionServiceTests {
         setupMockMdnsAddonFinder();
         setupMockUpnpAddonFinder();
         addonSuggestionService = createAddonSuggestionService();
+    }
+
+    @Test
+    public void testConcurrentModification() throws InterruptedException {
+        // 1. Setup
+        AddonSuggestionService service = new AddonSuggestionService(localeProvider, config);
+
+        // Fill with initial data
+        for (int i = 0; i < 50; i++) {
+            AddonFinder mockFinder = mock(AddonFinder.class);
+            service.addAddonFinder(mockFinder);
+        }
+
+        AtomicBoolean running = new AtomicBoolean(true);
+        AtomicReference<Exception> threadError = new AtomicReference<>();
+        CountDownLatch latch = new CountDownLatch(2);
+
+        // 2. Thread A: The "Reader" (Simulates UI refreshing the Addon Store)
+        // This iterates the list repeatedly.
+        Thread reader = new Thread(() -> {
+            try {
+                while (running.get()) {
+                    service.getSuggestedAddons(Locale.US);
+                    Thread.sleep(1);
+                }
+            } catch (Exception e) {
+                threadError.set(e);
+            } finally {
+                latch.countDown();
+            }
+        });
+
+        // 3. Thread B: The "Writer" (Simulates OSGi adding/removing services)
+        // This modifies the list while Thread A is reading.
+        Thread writer = new Thread(() -> {
+            try {
+                for (int i = 0; i < 50; i++) {
+                    AddonFinder newFinder = mock(AddonFinder.class);
+                    service.addAddonFinder(newFinder); // WRITE operation
+                    Thread.sleep(2);
+                    if (i % 2 == 0)
+                        service.removeAddonFinder(newFinder); // WRITE operation
+                }
+            } catch (Exception e) {
+                threadError.set(e);
+            } finally {
+                running.set(false); // Tell reader to stop
+                latch.countDown();
+            }
+        });
+
+        // 4. Act - Start both threads
+        reader.start();
+        writer.start();
+        latch.await(); // Wait for both to finish
+
+        // 5. Assert - No exceptions should have occurred
+        if (threadError.get() != null) {
+            fail("Concurrency exception occurred: " + threadError.get().getMessage());
+        }
     }
 
     private AddonSuggestionService createAddonSuggestionService() {
