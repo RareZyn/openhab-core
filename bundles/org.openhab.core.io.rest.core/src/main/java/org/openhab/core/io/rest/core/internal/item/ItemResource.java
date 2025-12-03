@@ -689,7 +689,56 @@ public class ItemResource implements RESTResource {
         ((GenericItem) item).addTag(tag);
         managedItemProvider.update(item);
 
-        return Response.ok(null, MediaType.TEXT_PLAIN).build();
+        logger.info("addTag() called for item: {} with tag: {}", itemname, tag);
+
+        if (item.hasTag(tag)) {
+            logger.info("Tag {} added successfully to {}", tag, itemname);
+            return Response.ok(null, MediaType.TEXT_PLAIN).build();
+        } else {
+            logger.warn("Tag {} was NOT added to {}", tag, itemname);
+            return Response.status(Status.NOT_MODIFIED).build();
+        }
+    }
+
+    @PUT
+    @RolesAllowed({ Role.ADMIN })
+    @Path("/{itemname: [a-zA-Z_0-9]+}/tags")
+    @Operation(operationId = "addTagsToItem", summary = "Adds multiple tags to an item.", security = {
+            @SecurityRequirement(name = "oauth2", scopes = { "admin" }) }, responses = {
+                    @ApiResponse(responseCode = "200", description = "OK"),
+                    @ApiResponse(responseCode = "404", description = "Item not found."),
+                    @ApiResponse(responseCode = "405", description = "Item not editable.") })
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response addTags(@PathParam("itemname") @Parameter(description = "item name") String itemname,
+            @RequestBody(description = "List of tags", required = true) List<String> tags) {
+        Item item = getItem(itemname);
+
+        if (item == null) {
+            return Response.status(Status.NOT_FOUND).build();
+        }
+
+        if (managedItemProvider.get(itemname) == null) {
+            return Response.status(Status.METHOD_NOT_ALLOWED).build();
+        }
+
+        List<String> addedTags = new ArrayList<>();
+        for (String tag : tags) {
+            ((GenericItem) item).addTag(tag);
+            if (item.hasTag(tag)) {
+                addedTags.add(tag);
+                logger.info("Tag {} added successfully to {}", tag, itemname);
+            } else {
+                logger.warn("Tag {} was NOT added to {}", tag, itemname);
+            }
+        }
+
+        managedItemProvider.update(item);
+
+        if (!addedTags.isEmpty()) {
+            return Response.ok("Added tags: " + addedTags, MediaType.TEXT_PLAIN).build();
+        } else {
+            return Response.status(Status.NOT_MODIFIED).build();
+        }
     }
 
     @DELETE
