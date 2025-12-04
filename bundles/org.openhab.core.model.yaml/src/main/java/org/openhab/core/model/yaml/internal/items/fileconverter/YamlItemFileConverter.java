@@ -55,6 +55,8 @@ import org.openhab.core.types.State;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * {@link YamlItemFileConverter} is the YAML file converter for {@link Item} object.
@@ -64,6 +66,18 @@ import org.osgi.service.component.annotations.Reference;
 @NonNullByDefault
 @Component(immediate = true, service = { ItemFileGenerator.class, ItemFileParser.class })
 public class YamlItemFileConverter extends AbstractItemFileGenerator implements ItemFileParser {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(YamlItemFileConverter.class);
+
+    // Metadata namespace constants
+    private static final String NAMESPACE_AUTOUPDATE = "autoupdate";
+    private static final String NAMESPACE_UNIT = "unit";
+    private static final String NAMESPACE_STATE_DESCRIPTION = "stateDescription";
+
+    // Configuration parameter constants
+    private static final String CONFIG_PARAM_PATTERN = "pattern";
+    private static final String CONFIG_PARAM_PROFILE = "profile";
+    private static final String PROFILE_URI_PREFIX = "profile:";
 
     private final YamlModelRepository modelRepository;
     private final YamlItemProvider itemProvider;
@@ -83,11 +97,25 @@ public class YamlItemFileConverter extends AbstractItemFileGenerator implements 
         this.configDescriptionRegistry = configDescRegistry;
     }
 
+    /**
+     * Returns the file format this converter handles.
+     *
+     * @return the format identifier ("YAML")
+     */
     @Override
     public String getFileFormatGenerator() {
         return "YAML";
     }
 
+    /**
+     * Convert items to YAML format and queue them for generation.
+     *
+     * @param id unique model identifier
+     * @param items collection of items to convert
+     * @param metadata associated metadata (channel links, configurations)
+     * @param stateFormatters map of item name to state formatter patterns
+     * @param hideDefaultParameters if true, omit parameters with default values
+     */
     @Override
     public void setItemsToBeGenerated(String id, List<Item> items, Collection<Metadata> metadata,
             Map<String, String> stateFormatters, boolean hideDefaultParameters) {
@@ -102,6 +130,137 @@ public class YamlItemFileConverter extends AbstractItemFileGenerator implements 
     @Override
     public void generateFileFormat(String id, OutputStream out) {
         modelRepository.generateFileFormat(id, out);
+    }
+
+    /**
+     * Extract the main item type and dimension (if any) from an item type string.
+     *
+     * For NUMBER items with dimensions (e.g., "Number:Temperature"), returns
+     * a pair [mainType, dimension]. For other types, dimension is null.
+     *
+     * @param itemType the full item type string
+     * @return array [mainType, dimension] or [itemType, null]
+     */
+    private String[] extractMainTypeAndDimension(String itemType) {
+        String mainType = ItemUtil.getMainItemType(itemType);
+        String dimension = ItemUtil.getItemTypeExtension(itemType);
+        if (CoreItemFactory.NUMBER.equals(mainType) && dimension != null) {
+            return new String[] { mainType, dimension };
+        }
+        return new String[] { itemType, null };
+    }
+
+    /**
+     * Apply extracted type and dimension information to a DTO object.
+     *
+     * @param dto the target DTO (either YamlItemDTO or YamlGroupDTO)
+     * @param typeInfo array [mainType, dimension]
+     */
+    private void applyTypeAndDimensionToDTO(Object dto, String[] typeInfo) {
+        if (dto instanceof YamlItemDTO yamlItemDto) {
+            yamlItemDto.type = typeInfo[0];
+            if (typeInfo[1] != null) {
+                yamlItemDto.dimension = typeInfo[1];
+            }
+        } else if (dto instanceof YamlGroupDTO yamlGroupDto) {
+            yamlGroupDto.type = typeInfo[0];
+            if (typeInfo[1] != null) {
+                yamlGroupDto.dimension = typeInfo[1];
+            }
+        }
+    }
+
+    /**
+     * Extract and set group information from a GroupItem.
+     *
+     * @param dto target DTO
+     * @param groupItem the group item to extract from
+     */
+    private void setGroupInfo(YamlItemDTO dto, GroupItem groupItem) {
+        Item baseItem = groupItem.getBaseItem();
+        if (baseItem != null) {
+            dto.group = new YamlGroupDTO();
+            String[] typeInfo = extractMainTypeAndDimension(baseItem.getType());
+            applyTypeAndDimensionToDTO(dto.group, typeInfo);
+
+            GroupFunction function = groupItem.getFunction();
+            if (function != null && !(function instanceof Equality)) {
+                dto.group.function = function.getClass().getSimpleName();
+                List<String> params = new ArrayList<>();
+                State[] parameters = function.getParameters();
+                for (int i = 0; i < parameters.length; i++) {
+                    params.add(parameters[i].toString());
+                }
+                dto.group.parameters = params.isEmpty() ? null : params;
+            }
+        }
+    }
+
+    /**
+     * Set channel link information in the DTO.
+     *
+     * @param dto target DTO
+     * @param channelLinks list of channel link metadata
+     * @param hideDefaultParameters if true, omit default parameter values
+     */
+    private void setChannelInfo(YamlItemDTO dto, List<Metadata> channelLinks, boolean hideDefaultParameters) {
+        if (channelLinks.size() == 1 && channelLinks.getFirst().getConfiguration().isEmpty()) {
+            dto.channel = channelLinks.getFirst().getValue();
+        } else if (!channelLinks.isEmpty()) {
+            dto.channels = new LinkedHashMap<>();
+            channelLinks.forEach(md -> {
+                Map<String, Object> configuration = new LinkedHashMap<>();
+                getConfigurationParameters(md, hideDefaultParameters).forEach(param -> {
+                    configuration.put(param.name(), param.value());
+                });
+                dto.channels.put(md.getValue(), configuration);
+            });
+        }
+    }
+
+    /**
+     * Set metadata (unit, autoupdate, stateDescription, etc.) in the DTO.
+     *
+     * @param dto target DTO
+     * @param metadata list of metadata to process
+     * @param hideDefaultParameters if true, omit default parameter values
+     * @param defaultPattern the default pattern for this item type
+     * @param patternSet whether a pattern has already been set in dto.format
+     */
+    private void setMetadataInfo(YamlItemDTO dto, List<Metadata> metadata, boolean hideDefaultParameters,
+            String defaultPattern, boolean patternSet) {
+        Map<String, YamlMetadataDTO> metadataDto = new LinkedHashMap<>();
+
+        for (Metadata md : metadata) {
+            String namespace = md.getUID().getNamespace();
+            if (NAMESPACE_AUTOUPDATE.equals(namespace)) {
+                dto.autoupdate = Boolean.valueOf(md.getValue());
+            } else if (NAMESPACE_UNIT.equals(namespace)) {
+                dto.unit = md.getValue();
+            } else {
+                YamlMetadataDTO mdDto = new YamlMetadataDTO();
+                mdDto.value = md.getValue().isEmpty() ? null : md.getValue();
+                Map<String, Object> configuration = new LinkedHashMap<>();
+                String statePattern = null;
+                for (ConfigParameter param : getConfigurationParameters(md)) {
+                    configuration.put(param.name(), param.value());
+                    if (NAMESPACE_STATE_DESCRIPTION.equals(namespace) && CONFIG_PARAM_PATTERN.equals(param.name())) {
+                        statePattern = param.value().toString();
+                    }
+                }
+                // Ignore state description in case it contains only a state pattern and state pattern was injected
+                // in field format or is the default pattern
+                if (!(statePattern != null && configuration.size() == 1
+                        && (patternSet || statePattern.equals(defaultPattern)))) {
+                    mdDto.config = configuration.isEmpty() ? null : configuration;
+                    metadataDto.put(namespace, mdDto);
+                    if (patternSet && statePattern != null) {
+                        dto.format = null;
+                    }
+                }
+            }
+        }
+        dto.metadata = metadataDto.isEmpty() ? null : metadataDto;
     }
 
     private YamlItemDTO buildItemDTO(Item item, List<Metadata> channelLinks, List<Metadata> metadata,
@@ -120,48 +279,30 @@ public class YamlItemFileConverter extends AbstractItemFileGenerator implements 
             patternSet = patterToSet != null;
         }
 
-        dto.type = item.getType();
-        String mainType = ItemUtil.getMainItemType(item.getType());
-        String dimension = ItemUtil.getItemTypeExtension(item.getType());
-        if (CoreItemFactory.NUMBER.equals(mainType) && dimension != null) {
-            dto.type = mainType;
-            dto.dimension = dimension;
-        }
+        // Handle item type and dimension
+        String[] typeInfo = extractMainTypeAndDimension(item.getType());
+        applyTypeAndDimensionToDTO(dto, typeInfo);
+
+        // Handle group-specific info
         if (item instanceof GroupItem groupItem) {
-            Item baseItem = groupItem.getBaseItem();
-            if (baseItem != null) {
-                dto.group = new YamlGroupDTO();
-                dto.group.type = baseItem.getType();
-                mainType = ItemUtil.getMainItemType(baseItem.getType());
-                dimension = ItemUtil.getItemTypeExtension(baseItem.getType());
-                if (CoreItemFactory.NUMBER.equals(mainType) && dimension != null) {
-                    dto.group.type = mainType;
-                    dto.group.dimension = dimension;
-                }
-                GroupFunction function = groupItem.getFunction();
-                if (function != null && !(function instanceof Equality)) {
-                    dto.group.function = function.getClass().getSimpleName();
-                    List<String> params = new ArrayList<>();
-                    State[] parameters = function.getParameters();
-                    for (int i = 0; i < parameters.length; i++) {
-                        params.add(parameters[i].toString());
-                    }
-                    dto.group.parameters = params.isEmpty() ? null : params;
-                }
-            }
+            setGroupInfo(dto, groupItem);
         }
 
+        // Handle category/icon
         String category = item.getCategory();
         if (category != null && !category.isEmpty()) {
             dto.icon = category;
         }
 
+        // Handle item groups
         if (!item.getGroupNames().isEmpty()) {
             dto.groups = new ArrayList<>();
             item.getGroupNames().forEach(group -> {
                 dto.groups.add(group);
             });
         }
+
+        // Handle item tags
         if (!item.getTags().isEmpty()) {
             dto.tags = new LinkedHashSet<>();
             item.getTags().stream().sorted().collect(Collectors.toList()).forEach(tag -> {
@@ -169,50 +310,11 @@ public class YamlItemFileConverter extends AbstractItemFileGenerator implements 
             });
         }
 
-        if (channelLinks.size() == 1 && channelLinks.getFirst().getConfiguration().isEmpty()) {
-            dto.channel = channelLinks.getFirst().getValue();
-        } else if (!channelLinks.isEmpty()) {
-            dto.channels = new LinkedHashMap<>();
-            channelLinks.forEach(md -> {
-                Map<String, Object> configuration = new LinkedHashMap<>();
-                getConfigurationParameters(md, hideDefaultParameters).forEach(param -> {
-                    configuration.put(param.name(), param.value());
-                });
-                dto.channels.put(md.getValue(), configuration);
-            });
-        }
+        // Handle channel links
+        setChannelInfo(dto, channelLinks, hideDefaultParameters);
 
-        Map<String, YamlMetadataDTO> metadataDto = new LinkedHashMap<>();
-        for (Metadata md : metadata) {
-            String namespace = md.getUID().getNamespace();
-            if ("autoupdate".equals(namespace)) {
-                dto.autoupdate = Boolean.valueOf(md.getValue());
-            } else if ("unit".equals(namespace)) {
-                dto.unit = md.getValue();
-            } else {
-                YamlMetadataDTO mdDto = new YamlMetadataDTO();
-                mdDto.value = md.getValue().isEmpty() ? null : md.getValue();
-                Map<String, Object> configuration = new LinkedHashMap<>();
-                String statePattern = null;
-                for (ConfigParameter param : getConfigurationParameters(md)) {
-                    configuration.put(param.name(), param.value());
-                    if ("stateDescription".equals(namespace) && "pattern".equals(param.name())) {
-                        statePattern = param.value().toString();
-                    }
-                }
-                // Ignore state description in case it contains only a state pattern and state pattern was injected
-                // in field format or is the default pattern
-                if (!(statePattern != null && configuration.size() == 1
-                        && (patternSet || statePattern.equals(defaultPattern)))) {
-                    mdDto.config = configuration.isEmpty() ? null : configuration;
-                    metadataDto.put(namespace, mdDto);
-                    if (patternSet && statePattern != null) {
-                        dto.format = null;
-                    }
-                }
-            }
-        }
-        dto.metadata = metadataDto.isEmpty() ? null : metadataDto;
+        // Handle metadata (unit, autoupdate, stateDescription, etc.)
+        setMetadataInfo(dto, metadata, hideDefaultParameters, defaultPattern, patternSet);
 
         return dto;
     }
@@ -228,19 +330,19 @@ public class YamlItemFileConverter extends AbstractItemFileGenerator implements 
         List<ConfigParameter> parameters = new ArrayList<>();
         Set<String> handledNames = new HashSet<>();
         Map<String, Object> configParameters = metadata.getConfiguration();
-        Object profile = configParameters.get("profile");
+        Object profile = configParameters.get(CONFIG_PARAM_PROFILE);
         List<ConfigDescriptionParameter> configDescriptionParameter = List.of();
         if (profile instanceof String profileStr) {
-            parameters.add(new ConfigParameter("profile", profileStr));
-            handledNames.add("profile");
+            parameters.add(new ConfigParameter(CONFIG_PARAM_PROFILE, profileStr));
+            handledNames.add(CONFIG_PARAM_PROFILE);
             try {
                 ConfigDescription configDesc = configDescriptionRegistry
-                        .getConfigDescription(new URI("profile:" + profileStr));
+                        .getConfigDescription(new URI(PROFILE_URI_PREFIX + profileStr));
                 if (configDesc != null) {
                     configDescriptionParameter = configDesc.getParameters();
                 }
             } catch (URISyntaxException e) {
-                // Ignored; in practice this will never be thrown
+                LOGGER.debug("Unable to resolve configuration description for profile: {}", profileStr, e);
             }
         }
         for (ConfigDescriptionParameter param : configDescriptionParameter) {
@@ -268,33 +370,64 @@ public class YamlItemFileConverter extends AbstractItemFileGenerator implements 
         return parameters;
     }
 
+    /**
+     * Returns the file format this parser handles.
+     *
+     * @return the format identifier ("YAML")
+     */
     @Override
     public String getFileFormatParser() {
         return "YAML";
     }
 
+    /**
+     * Start parsing a YAML file format.
+     *
+     * @param syntax the YAML content as string
+     * @param errors list to accumulate parsing errors
+     * @param warnings list to accumulate parsing warnings
+     * @return unique model identifier, or null if parsing fails
+     */
     @Override
     public @Nullable String startParsingFileFormat(String syntax, List<String> errors, List<String> warnings) {
         ByteArrayInputStream inputStream = new ByteArrayInputStream(syntax.getBytes());
         return modelRepository.createIsolatedModel(inputStream, errors, warnings);
     }
 
+    /**
+     * Get parsed items from a model.
+     *
+     * @param modelName the model identifier
+     * @return collection of parsed items
+     */
     @Override
     public Collection<Item> getParsedItems(String modelName) {
         return itemProvider.getAllFromModel(modelName);
     }
 
+    /**
+     * Get parsed metadata from a model.
+     *
+     * @param modelName the model identifier
+     * @return collection of parsed metadata
+     */
     @Override
     public Collection<Metadata> getParsedMetadata(String modelName) {
         return metadataProvider.getAllFromModel(modelName);
     }
 
+    /**
+     * Extract state formatters (patterns) from parsed metadata.
+     *
+     * @param modelName the model identifier
+     * @return map of item name to state formatter pattern
+     */
     @Override
     public Map<String, String> getParsedStateFormatters(String modelName) {
         Map<String, String> stateFormatters = new HashMap<>();
         getParsedMetadata(modelName).forEach(md -> {
-            if ("stateDescription".equals(md.getUID().getNamespace())) {
-                Object pattern = md.getConfiguration().get("pattern");
+            if (NAMESPACE_STATE_DESCRIPTION.equals(md.getUID().getNamespace())) {
+                Object pattern = md.getConfiguration().get(CONFIG_PARAM_PATTERN);
                 if (pattern instanceof String patternStr && !patternStr.isBlank()) {
                     stateFormatters.put(md.getUID().getItemName(), patternStr);
                 }
@@ -303,6 +436,11 @@ public class YamlItemFileConverter extends AbstractItemFileGenerator implements 
         return stateFormatters;
     }
 
+    /**
+     * Finish parsing and cleanup isolated model resources.
+     *
+     * @param modelName the model identifier to clean up
+     */
     @Override
     public void finishParsingFileFormat(String modelName) {
         modelRepository.removeIsolatedModel(modelName);
