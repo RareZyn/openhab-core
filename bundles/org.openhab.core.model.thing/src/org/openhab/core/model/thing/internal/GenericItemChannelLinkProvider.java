@@ -24,6 +24,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.core.common.registry.AbstractProvider;
 import org.openhab.core.config.core.Configuration;
 import org.openhab.core.model.item.BindingConfigParseException;
@@ -51,37 +52,18 @@ public class GenericItemChannelLinkProvider extends AbstractProvider<ItemChannel
 
     private final Logger logger = LoggerFactory.getLogger(GenericItemChannelLinkProvider.class);
 
-    /**
-     * Caches binding configurations.
-     * Structure: context -> itemName -> channelUID -> ItemChannelLink
-     * This multi-level map enables fast lookup and isolation of links per context.
-     */
+    /** caches binding configurations. maps context to a map mapping itemNames to {@link ItemChannelLink}s */
     protected Map<String, Map<String, Map<ChannelUID, ItemChannelLink>>> itemChannelLinkMap = new ConcurrentHashMap<>();
 
-    /**
-     * Tracks channels added during the current configuration update per context.
-     * Structure: context -> itemName -> Set<ChannelUID>
-     * Used to detect which channels were removed during an update transaction.
-     * Per-context to support concurrent updates across different models.
-     * FIXED: Was previously global (addedItemChannels), causing concurrent update issues.
-     */
-    private final Map<String, Map<String, Set<ChannelUID>>> addedItemChannelsByContext = new ConcurrentHashMap<>();
+    private Map<String, Set<ChannelUID>> addedItemChannels = new ConcurrentHashMap<>();
 
     /**
-     * Stores information about the context of items.
-     * Structure: context -> Set of Item names
-     * Tracks which items are managed in each context for lifecycle management.
+     * stores information about the context of items. The map has this content
+     * structure: context -> Set of Item names
      */
     protected Map<String, Set<String>> contextMap = new ConcurrentHashMap<>();
 
-    /**
-     * Tracks item names present at the start of a configuration update transaction per context.
-     * Structure: context -> Set of Item names
-     * Per-context to support concurrent updates across different models.
-     * This prevents race conditions when multiple configuration updates occur simultaneously.
-     * FIXED: Was previously global (previousItemNames), causing concurrent update issues.
-     */
-    private final Map<String, Set<String>> previousItemNamesByContext = new ConcurrentHashMap<>();
+    private @Nullable Set<String> previousItemNames;
 
     @Override
     public String getBindingType() {
@@ -93,33 +75,16 @@ public class GenericItemChannelLinkProvider extends AbstractProvider<ItemChannel
         // all item types are allowed
     }
 
-    /**
-     * Processes a binding configuration string containing one or more Channel UIDs.
-     *
-     * Expected format: one or more comma-separated Channel UIDs.
-     * Example: "binding:thing:device:channel1,binding:thing:device:channel2"
-     *
-     * @param context the model context (e.g., file name or model name) for grouping related links
-     * @param itemType the type of the item (unused, all types are allowed)
-     * @param itemName the name of the item to link
-     * @param bindingConfig comma-separated Channel UIDs; at least one UID is required
-     * @param configuration configuration parameters for the link (e.g., profile settings)
-     * @throws BindingConfigParseException if no valid Channel UIDs are provided or if a UID is malformed
-     */
     @Override
     public void processBindingConfiguration(String context, String itemType, String itemName, String bindingConfig,
             Configuration configuration) throws BindingConfigParseException {
-        // Split by comma, trim each entry, and filter out blank tokens
-        String[] rawUids = bindingConfig.split(",");
-        java.util.List<String> uids = java.util.Arrays.stream(rawUids).map(String::trim).filter(uid -> !uid.isEmpty())
-                .toList();
-
-        if (uids.isEmpty()) {
+        String[] uids = bindingConfig.split(",");
+        if (uids.length == 0) {
             throw new BindingConfigParseException(
                     "At least one Channel UID should be provided: <bindingID>.<thingTypeId>.<thingId>.<channelId>");
         }
         for (String uid : uids) {
-            createItemChannelLink(context, itemName, uid, configuration);
+            createItemChannelLink(context, itemName, uid.trim(), configuration);
         }
     }
 
@@ -132,10 +97,9 @@ public class GenericItemChannelLinkProvider extends AbstractProvider<ItemChannel
             throw new BindingConfigParseException(e.getMessage());
         }
 
-        // Fix the configuration in case a profile is defined without any scope.
-        // Profiles must include a scope (e.g., "system:default" not just "default").
+        // Fix the configuration in case a profile is defined without any scope
         if (configuration.containsKey("profile") && configuration.get("profile") instanceof String profile
-                && !profile.contains(":")) {
+                && profile.indexOf(":") == -1) {
             String fullProfile = ProfileTypeUID.SYSTEM_SCOPE + ":" + profile;
             configuration.put("profile", fullProfile);
             logger.info(
@@ -147,11 +111,8 @@ public class GenericItemChannelLinkProvider extends AbstractProvider<ItemChannel
 
         Set<String> itemNames = Objects.requireNonNull(contextMap.computeIfAbsent(context, k -> new HashSet<>()));
         itemNames.add(itemName);
-
-        // Remove from previousItemNames for this context if present (item is being reconfigured)
-        Set<String> previousItems = previousItemNamesByContext.get(context);
-        if (previousItems != null) {
-            previousItems.remove(itemName);
+        if (previousItemNames != null) {
+            previousItemNames.remove(itemName);
         }
 
         Map<String, Map<ChannelUID, ItemChannelLink>> channelLinkMap = Objects
@@ -170,57 +131,29 @@ public class GenericItemChannelLinkProvider extends AbstractProvider<ItemChannel
                 notifyListenersAboutUpdatedElement(oldLink, itemChannelLink);
             }
         }
-
-        // Track this channel as added during the current update transaction for this context
-        addedItemChannelsByContext.computeIfAbsent(context, k -> new ConcurrentHashMap<>())
-                .computeIfAbsent(itemName, k -> new HashSet<>(2)).add(channelUIDObject);
+        addedItemChannels.computeIfAbsent(itemName, k -> new HashSet<>(2)).add(channelUIDObject);
     }
 
-    /**
-     * Marks the start of a configuration update transaction for the given context.
-     * This captures the current set of items in the context to detect removed items during the update.
-     *
-     * When called, this method records which items currently exist in the context.
-     * During {@link #processBindingConfiguration}, items that are processed are removed from this set.
-     * After update completion (in {@link #stopConfigurationUpdate}), any items remaining in the set
-     * are considered removed and their links are cleaned up.
-     *
-     * @param context the model context for which to start the update transaction
-     */
     @Override
     public void startConfigurationUpdate(String context) {
-        if (previousItemNamesByContext.containsKey(context)) {
-            logger.warn("There already is an update transaction for context '{}'. Continuing anyway.", context);
+        if (previousItemNames != null) {
+            logger.warn("There already is an update transaction for generic item channel links. Continuing anyway.");
         }
         Set<String> previous = contextMap.get(context);
-        previousItemNamesByContext.put(context, previous != null ? new HashSet<>(previous) : new HashSet<>());
+        previousItemNames = previous != null ? new HashSet<>(previous) : new HashSet<>();
     }
 
-    /**
-     * Marks the end of a configuration update transaction for the given context.
-     * This removes any items and channels that were not reprocessed during the update.
-     *
-     * Cleanup logic:
-     * 1. Remove items that existed before but were not processed (deleted items).
-     * 2. Remove channels within processed items that were not reprocessed (channels removed from item).
-     * 3. Notify listeners about removed links (if context is not isolated).
-     * 4. Clean up transaction state for this context.
-     *
-     * @param context the model context for which to stop the update transaction
-     */
     @Override
     public void stopConfigurationUpdate(String context) {
-        final Set<String> previousItemNames = previousItemNamesByContext.remove(context);
+        final Set<String> previousItemNames = this.previousItemNames;
+        this.previousItemNames = null;
         if (previousItemNames == null) {
-            logger.debug("stopConfigurationUpdate called for context '{}' but no active transaction found.", context);
             return;
         }
-
-        Map<String, Map<ChannelUID, ItemChannelLink>> channelLinkMap = itemChannelLinkMap.getOrDefault(context,
-                new HashMap<>());
-
-        // Remove items that existed before but were not reprocessed (deleted items)
+        Map<String, Map<ChannelUID, ItemChannelLink>> channelLinkMap = (itemChannelLinkMap.getOrDefault(context,
+                new HashMap<>()));
         for (String itemName : previousItemNames) {
+            // we remove all binding configurations that were not processed
             Map<ChannelUID, ItemChannelLink> links = channelLinkMap.remove(itemName);
             if (links != null && isValidContextForListeners(context)) {
                 links.values().forEach(this::notifyListenersAboutRemovedElement);
@@ -228,55 +161,33 @@ public class GenericItemChannelLinkProvider extends AbstractProvider<ItemChannel
         }
         Optional.ofNullable(contextMap.get(context)).ifPresent(ctx -> ctx.removeAll(previousItemNames));
 
-        // For items that were reprocessed, remove channels that are no longer present
-        Map<String, Set<ChannelUID>> addedItemChannels = addedItemChannelsByContext.remove(context);
-        if (addedItemChannels != null) {
-            addedItemChannels.forEach((itemName, addedChannelUIDs) -> {
-                Map<ChannelUID, ItemChannelLink> links = channelLinkMap.getOrDefault(itemName, Map.of());
-                Set<ChannelUID> removedChannelUIDs = new HashSet<>(links.keySet());
-                removedChannelUIDs.removeAll(addedChannelUIDs);
-                removedChannelUIDs.forEach(removedChannelUID -> {
-                    ItemChannelLink link = links.remove(removedChannelUID);
-                    if (link != null && isValidContextForListeners(context)) {
-                        notifyListenersAboutRemovedElement(link);
-                    }
-                });
+        addedItemChannels.forEach((itemName, addedChannelUIDs) -> {
+            Map<ChannelUID, ItemChannelLink> links = channelLinkMap.getOrDefault(itemName, Map.of());
+            Set<ChannelUID> removedChannelUIDs = new HashSet<>(links.keySet());
+            removedChannelUIDs.removeAll(addedChannelUIDs);
+            removedChannelUIDs.forEach(removedChannelUID -> {
+                ItemChannelLink link = links.remove(removedChannelUID);
+                if (link != null && isValidContextForListeners(context)) {
+                    notifyListenersAboutRemovedElement(link);
+                }
             });
-        }
-
-        // Clean up empty context entry
+        });
+        addedItemChannels.clear();
         if (channelLinkMap.isEmpty()) {
             itemChannelLinkMap.remove(context);
         }
     }
 
-    /**
-     * Returns all item-to-channel links from non-isolated (valid listener) contexts.
-     *
-     * Isolated models (used for parsing only) are excluded from this result.
-     * This ensures that UI and runtime consumers only see links from active models.
-     *
-     * @return collection of all valid ItemChannelLink objects
-     */
     @Override
     public Collection<ItemChannelLink> getAll() {
-        return itemChannelLinkMap.entrySet().stream().filter(entry -> isValidContextForListeners(entry.getKey()))
-                .flatMap(entry -> entry.getValue().values().stream()).flatMap(itemLinks -> itemLinks.values().stream())
-                .toList();
+        return itemChannelLinkMap.keySet().stream().filter(context -> isValidContextForListeners(context))
+                .map(name -> itemChannelLinkMap.getOrDefault(name, Map.of())).flatMap(m -> m.values().stream())
+                .flatMap(m -> m.values().stream()).toList();
     }
 
-    /**
-     * Returns all item-to-channel links for a specific context (model).
-     *
-     * This includes links from both isolated and non-isolated contexts.
-     * Useful for model-specific operations like validation or export.
-     *
-     * @param context the model context (e.g., file name or model name)
-     * @return collection of ItemChannelLink objects in this context
-     */
     public Collection<ItemChannelLink> getAllFromContext(String context) {
-        return itemChannelLinkMap.getOrDefault(context, Map.of()).values().stream()
-                .flatMap(itemLinks -> itemLinks.values().stream()).toList();
+        return itemChannelLinkMap.getOrDefault(context, Map.of()).values().stream().flatMap(m -> m.values().stream())
+                .toList();
     }
 
     private boolean isValidContextForListeners(String context) {
