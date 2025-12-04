@@ -21,8 +21,5 @@ import org.openhab.core.voice.text.HumanLanguageInterpreter;
  *
  * @author Kai Kreuzer - Initial contribution
  */
-public class HumanLanguageInterpreterDTO {
-    public String id;
-    public String label;
-    public Set<String> locales;
+public record HumanLanguageInterpreterDTO(String id, String label, Set<String> locales) {
 }

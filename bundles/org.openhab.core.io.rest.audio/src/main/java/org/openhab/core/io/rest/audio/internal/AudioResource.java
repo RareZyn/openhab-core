@@ -12,10 +12,10 @@
  */
 package org.openhab.core.io.rest.audio.internal;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 import javax.annotation.security.RolesAllowed;
 import javax.ws.rs.GET;
@@ -45,6 +45,8 @@ import org.osgi.service.jaxrs.whiteboard.propertytypes.JSONRequired;
 import org.osgi.service.jaxrs.whiteboard.propertytypes.JaxrsApplicationSelect;
 import org.osgi.service.jaxrs.whiteboard.propertytypes.JaxrsName;
 import org.osgi.service.jaxrs.whiteboard.propertytypes.JaxrsResource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -55,7 +57,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * This class acts as a REST resource for audio features.
+ * REST resource that exposes audio input/output configuration through
+ * the openHAB REST API.
  *
  * @author Laurent Garnier - Initial contribution
  * @author Markus Rathgeb - Migrated to JAX-RS Whiteboard Specification
@@ -75,15 +78,29 @@ public class AudioResource implements RESTResource {
     /** The URI path to this resource */
     public static final String PATH_AUDIO = "audio";
 
+    private final Logger logger = LoggerFactory.getLogger(AudioResource.class);
+
     private final AudioManager audioManager;
     private final LocaleService localeService;
 
     @Activate
-    public AudioResource( //
-            final @Reference AudioManager audioManager, //
-            final @Reference LocaleService localeService) {
+    public AudioResource(@Reference AudioManager audioManager, @Reference LocaleService localeService) {
         this.audioManager = audioManager;
         this.localeService = localeService;
+    }
+
+    // Helper methods
+
+    private Locale resolveLocale(@Nullable String languageHeader) {
+        return localeService.getLocale(languageHeader);
+    }
+
+    private List<AudioSourceDTO> mapSources(Collection<AudioSource> source, Locale locale) {
+        return source.stream().map(s -> AudioMapper.map(s, locale)).collect(Collectors.toList());
+    }
+
+    private List<AudioSinkDTO> mapSinks(Collection<AudioSink> sinks, Locale locale) {
+        return sinks.stream().map(s -> AudioMapper.map(s, locale)).collect(Collectors.toList());
     }
 
     @GET
@@ -93,12 +110,8 @@ public class AudioResource implements RESTResource {
             @ApiResponse(responseCode = "200", description = "OK", content = @Content(array = @ArraySchema(schema = @Schema(implementation = AudioSourceDTO.class)))) })
     public Response getSources(
             @HeaderParam(HttpHeaders.ACCEPT_LANGUAGE) @Parameter(description = "language") @Nullable String language) {
-        final Locale locale = localeService.getLocale(language);
-        Collection<AudioSource> sources = audioManager.getAllSources();
-        List<AudioSourceDTO> dtos = new ArrayList<>(sources.size());
-        for (AudioSource source : sources) {
-            dtos.add(AudioMapper.map(source, locale));
-        }
+        Locale locale = resolveLocale(language);
+        List<AudioSourceDTO> dtos = mapSources(audioManager.getAllSources(), locale);
         return Response.ok(dtos).build();
     }
 
@@ -110,13 +123,14 @@ public class AudioResource implements RESTResource {
             @ApiResponse(responseCode = "404", description = "Source not found") })
     public Response getDefaultSource(
             @HeaderParam(HttpHeaders.ACCEPT_LANGUAGE) @Parameter(description = "language") @Nullable String language) {
-        final Locale locale = localeService.getLocale(language);
+        Locale locale = resolveLocale(language);
         AudioSource source = audioManager.getSource();
-        if (source != null) {
-            return Response.ok(AudioMapper.map(source, locale)).build();
-        } else {
+
+        if (source == null) {
+            logger.warn("No default audio source found");
             return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Source not found");
         }
+        return Response.ok(AudioMapper.map(source, locale)).build();
     }
 
     @GET
@@ -126,12 +140,8 @@ public class AudioResource implements RESTResource {
             @ApiResponse(responseCode = "200", description = "OK", content = @Content(array = @ArraySchema(schema = @Schema(implementation = AudioSinkDTO.class)))) })
     public Response getSinks(
             @HeaderParam(HttpHeaders.ACCEPT_LANGUAGE) @Parameter(description = "language") @Nullable String language) {
-        final Locale locale = localeService.getLocale(language);
-        Collection<AudioSink> sinks = audioManager.getAllSinks();
-        List<AudioSinkDTO> dtos = new ArrayList<>(sinks.size());
-        for (AudioSink sink : sinks) {
-            dtos.add(AudioMapper.map(sink, locale));
-        }
+        Locale locale = resolveLocale(language);
+        List<AudioSinkDTO> dtos = mapSinks(audioManager.getAllSinks(), locale);
         return Response.ok(dtos).build();
     }
 
@@ -143,12 +153,13 @@ public class AudioResource implements RESTResource {
             @ApiResponse(responseCode = "404", description = "Sink not found") })
     public Response getDefaultSink(
             @HeaderParam(HttpHeaders.ACCEPT_LANGUAGE) @Parameter(description = "language") @Nullable String language) {
-        final Locale locale = localeService.getLocale(language);
+        Locale locale = resolveLocale(language);
         AudioSink sink = audioManager.getSink();
-        if (sink != null) {
-            return Response.ok(AudioMapper.map(sink, locale)).build();
-        } else {
+
+        if (sink == null) {
+            logger.warn("No default audio sink found");
             return JSONResponse.createErrorResponse(Status.NOT_FOUND, "Sink not found");
         }
+        return Response.ok(AudioMapper.map(sink, locale)).build();
     }
 }

@@ -19,8 +19,5 @@ import org.openhab.core.voice.Voice;
  *
  * @author Laurent Garnier - Initial contribution
  */
-public class VoiceDTO {
-    public String id;
-    public String label;
-    public String locale;
+public record VoiceDTO(String id, String label, String locale) {
 }

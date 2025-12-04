@@ -20,7 +20,7 @@ import java.util.function.Predicate;
 import org.eclipse.jdt.annotation.NonNullByDefault;
 
 /**
- * The specific information we need to hold for a SSE sink which tracks item state updates.
+ * Contains the subscription information for a client listening to item state updates.
  *
  * @author Wouter Born - Initial contribution
  */

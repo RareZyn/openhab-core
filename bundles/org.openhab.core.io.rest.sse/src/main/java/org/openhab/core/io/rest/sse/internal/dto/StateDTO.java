@@ -12,18 +12,21 @@
  */
 package org.openhab.core.io.rest.sse.internal.dto;
 
+import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
+
 /**
  * A DTO class holding the state of an item, and its version suitable for display.
  *
  * @author Yannick Schaus - Initial contribution
  */
+@NonNullByDefault
 public class StateDTO {
-    public String state;
-    public String displayState;
-    public Number numericState;
-    public String unit;
-
-    public String type;
+    public @Nullable String state;
+    public @Nullable String displayState;
+    public @Nullable Number numericState;
+    public @Nullable String unit;
+    public @Nullable String type;
 
     public StateDTO() {
     }

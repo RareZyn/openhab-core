@@ -24,13 +24,13 @@ import org.slf4j.LoggerFactory;
  */
 public final class MDNSActivator implements BundleActivator {
 
-    private final Logger logger = LoggerFactory.getLogger(MDNSActivator.class);
+    private static final Logger logger = LoggerFactory.getLogger(MDNSActivator.class);
 
     /**
      * Called whenever the OSGi framework starts our bundle
      */
     @Override
-    public void start(BundleContext context) throws Exception {
+    public void start(BundleContext context) {
         logger.debug("mDNS service has been started.");
     }
 
@@ -38,7 +38,7 @@ public final class MDNSActivator implements BundleActivator {
      * Called whenever the OSGi framework stops our bundle
      */
     @Override
-    public void stop(BundleContext context) throws Exception {
+    public void stop(BundleContext context) {
         logger.debug("mDNS service has been stopped.");
     }
 }

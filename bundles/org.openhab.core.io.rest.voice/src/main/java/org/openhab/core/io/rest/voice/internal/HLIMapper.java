@@ -12,9 +12,9 @@
  */
 package org.openhab.core.io.rest.voice.internal;
 
-import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.openhab.core.voice.text.HumanLanguageInterpreter;
@@ -25,7 +25,7 @@ import org.openhab.core.voice.text.HumanLanguageInterpreter;
  * @author Kai Kreuzer - Initial contribution
  */
 @NonNullByDefault
-public class HLIMapper {
+public final class HLIMapper {
 
     /**
      * Maps a {@link HumanLanguageInterpreter} to a {@link HumanLanguageInterpreterDTO}.
@@ -36,16 +36,9 @@ public class HLIMapper {
      * @return the corresponding DTO
      */
     public static HumanLanguageInterpreterDTO map(HumanLanguageInterpreter hli, Locale locale) {
-        HumanLanguageInterpreterDTO dto = new HumanLanguageInterpreterDTO();
-        dto.id = hli.getId();
-        dto.label = hli.getLabel(locale);
-        final Set<Locale> supportedLocales = hli.getSupportedLocales();
-        if (supportedLocales != null) {
-            dto.locales = new HashSet<>(supportedLocales.size());
-            for (final Locale supportedLocale : supportedLocales) {
-                dto.locales.add(supportedLocale.toString());
-            }
-        }
-        return dto;
+        Set<String> locales = hli.getSupportedLocales().stream().map(Locale::toString)
+                .collect(Collectors.toUnmodifiableSet());
+
+        return new HumanLanguageInterpreterDTO(hli.getId(), hli.getLabel(locale), locales);
     }
 }

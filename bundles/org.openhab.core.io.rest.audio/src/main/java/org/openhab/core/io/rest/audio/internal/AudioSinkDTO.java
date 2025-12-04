@@ -23,11 +23,19 @@ import org.openhab.core.audio.AudioSink;
  */
 @NonNullByDefault
 public class AudioSinkDTO {
-    public String id;
-    public @Nullable String label;
+    private final String id;
+    private final @Nullable String label;
 
     public AudioSinkDTO(String id, @Nullable String label) {
         this.id = id;
         this.label = label;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public @Nullable String getLabel() {
+        return label;
     }
 }

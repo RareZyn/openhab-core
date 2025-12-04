@@ -23,15 +23,31 @@ import org.eclipse.jdt.annotation.Nullable;
 @NonNullByDefault
 public class TileDTO {
 
-    public String name;
-    public String url;
-    public @Nullable String overlay;
-    public String imageUrl;
+    private final String name;
+    private final String url;
+    private final @Nullable String overlay;
+    private final String imageUrl;
 
     public TileDTO(String name, String url, @Nullable String overlay, String imageUrl) {
         this.name = name;
         this.url = url;
         this.overlay = overlay;
         this.imageUrl = imageUrl;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getUrl() {
+        return url;
+    }
+
+    public @Nullable String getOverlay() {
+        return overlay;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
     }
 }

@@ -12,10 +12,9 @@
  */
 package org.openhab.core.io.rest.swagger.impl;
 
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -41,10 +40,6 @@ import org.osgi.service.jaxrs.whiteboard.propertytypes.JaxrsResource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-
-import io.swagger.v3.core.util.Json;
 import io.swagger.v3.jaxrs2.Reader;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
@@ -84,6 +79,9 @@ public class OpenApiResource implements RESTResource {
 
     /**
      * Creates a new instance.
+     *
+     * @param bc the OSGi bundle context (injected).
+     * @param application an injected JAX-RS Application reference
      */
     @Activate
     public OpenApiResource(final BundleContext bc, final @Reference Application application) {
@@ -100,30 +98,58 @@ public class OpenApiResource implements RESTResource {
     public Object getOpenAPI() {
         try {
             Reader reader = new Reader();
-
             OpenAPI openAPI = reader.read(getReaderClasses());
+
             openAPI.setInfo(createInfo());
             openAPI.setServers(List.of(createServer()));
             openAPI.schemaRequirement("oauth2", createOAuth2SecurityScheme());
 
-            String json = Json.mapper().writeValueAsString(openAPI);
-            return Response.status(Response.Status.OK)
-                    .entity(Json.mapper().readValue(json, new TypeReference<Map<String, Object>>() {
-                    })).build();
-        } catch (JsonProcessingException e) {
-            logger.error("Error while serializing the OpenAPI object to JSON");
-            return Response.serverError().build();
+            return Response.ok(openAPI, MediaType.APPLICATION_JSON).build();
         } catch (InvalidSyntaxException e) {
-            logger.error("Error while enumerating services for OpenAPI generation");
+            logger.error("Error while enumerating services for OpenAPI generation", e);
+            return Response.serverError().build();
+        } catch (RuntimeException e) {
+            logger.error("Unexpected error while generating OpenAPI specification", e);
             return Response.serverError().build();
         }
     }
 
+    /**
+     * Retrieves all service classes registered as RESTResource providers. These
+     * classes are fed into Swagger's Reader to generate the openAPI schema.
+     *
+     * @return a set of classes implementing RESTResource.
+     * @throws InvalidSyntaxException if service filtering fails (should not occur for null filter).
+     */
     private Set<Class<?>> getReaderClasses() throws InvalidSyntaxException {
-        return bundleContext.getServiceReferences(RESTResource.class, null).stream()
-                .map(reference -> bundleContext.getService(reference).getClass()).collect(Collectors.toSet());
+        Set<Class<?>> classes = new HashSet<>();
+
+        for (ServiceReference<RESTResource> reference : bundleContext.getServiceReferences(RESTResource.class, null)) {
+            RESTResource service = bundleContext.getService(reference);
+            try {
+                classes.add(service.getClass());
+            } catch (Exception e) {
+                logger.warn("Failed to obtain service for reference {}: {}", reference, e.getMessage(), e);
+            } finally {
+                try {
+                    bundleContext.ungetService(reference);
+                } catch (IllegalStateException e) {
+                    logger.debug("BundleContext.ungetService threw error for reference {}: {}", reference,
+                            e.getMessage(), e);
+                } catch (RuntimeException e) {
+                    logger.debug("Unexpected exception while ungetting service {}: {}", reference, e.getMessage(), e);
+                }
+            }
+        }
+
+        return classes;
     }
 
+    /**
+     * Constructs a Server object for the openAPI spec using the JAX-RS based URI.
+     *
+     * @return Server configuration for the API
+     */
     private Server createServer() {
         ServiceReference<Application> applicationReference = bundleContext.getServiceReference(Application.class);
 
@@ -133,6 +159,11 @@ public class OpenApiResource implements RESTResource {
         return server;
     }
 
+    /**
+     * Build the OpenAPI Info metadata block.
+     *
+     * @return Info populated with title, version, and contact.
+     */
     private Info createInfo() {
         Contact contact = new Contact();
         contact.setName(CONTACT_NAME);
@@ -146,6 +177,11 @@ public class OpenApiResource implements RESTResource {
         return info;
     }
 
+    /**
+     * Creates an OAuth2 SecurityScheme configured for authorization code flow.
+     *
+     * @return configured SecurityScheme for OAuth2
+     */
     private SecurityScheme createOAuth2SecurityScheme() {
         Scopes scopes = new Scopes();
         scopes.addString("admin", "Administration operations");

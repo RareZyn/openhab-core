@@ -31,10 +31,6 @@ public class VoiceMapper {
      * @return the corresponding DTO
      */
     public static VoiceDTO map(Voice voice) {
-        VoiceDTO dto = new VoiceDTO();
-        dto.id = voice.getUID();
-        dto.label = voice.getLabel();
-        dto.locale = voice.getLocale().toString();
-        return dto;
+        return new VoiceDTO(voice.getUID(), voice.getLabel(), voice.getLocale().toString());
     }
 }

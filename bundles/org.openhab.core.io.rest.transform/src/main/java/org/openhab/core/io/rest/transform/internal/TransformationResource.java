@@ -17,6 +17,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.Date;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import javax.annotation.security.RolesAllowed;
@@ -70,7 +71,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * The {@link TransformationResource} is a REST resource for handling transformations
+ * REST resource that exposes transformations (list, single, add/update/delete)
  *
  * @author Jan N. Klug - Initial contribution
  */
@@ -91,19 +92,28 @@ public class TransformationResource implements RESTResource {
     private final TransformationRegistry transformationRegistry;
     private final ManagedTransformationProvider managedTransformationProvider;
     private final BundleContext bundleContext;
-    private final RegistryChangedRunnableListener<Transformation> resetLastModifiedChangeListener = new RegistryChangedRunnableListener<>(
-            () -> lastModified = null);
 
-    private @Context @NonNullByDefault({}) UriInfo uriInfo;
-    private @Nullable Date lastModified = null;
+    /**
+     * Caches last modified date for GET list endpoint. AtomicReference used for thread-safe set/reset.
+     * Reset when the registry changes.
+     */
+    private final AtomicReference<@Nullable Date> lastModifiedRef = new AtomicReference<>();
+
+    private final RegistryChangedRunnableListener<Transformation> resetLastModifiedChangeListener = new RegistryChangedRunnableListener<>(
+            () -> lastModifiedRef.set(null));
+
+    @Nullable
+    @Context
+    private UriInfo uriInfo;
 
     @Activate
     public TransformationResource(final @Reference TransformationRegistry transformationRegistry,
             final @Reference ManagedTransformationProvider managedTransformationProvider,
             final BundleContext bundleContext) {
-        this.transformationRegistry = transformationRegistry;
-        this.managedTransformationProvider = managedTransformationProvider;
-        this.bundleContext = bundleContext;
+        this.transformationRegistry = Objects.requireNonNull(transformationRegistry, "transformationRegistry");
+        this.managedTransformationProvider = Objects.requireNonNull(managedTransformationProvider,
+                "managedTransformationProvider");
+        this.bundleContext = Objects.requireNonNull(bundleContext, "bundleContext");
 
         this.transformationRegistry.addRegistryChangeListener(resetLastModifiedChangeListener);
     }
@@ -113,28 +123,44 @@ public class TransformationResource implements RESTResource {
         this.transformationRegistry.removeRegistryChangeListener(resetLastModifiedChangeListener);
     }
 
+    /**
+     * Returns a JSON array stream of all transformations.
+     *
+     * @param request JAX-RS request used for conditional processing
+     * @return 200 OK with JSON array stream or 304 if not modified
+     */
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     @Operation(operationId = "getTransformations", summary = "Get a list of all transformations", responses = {
             @ApiResponse(responseCode = "200", description = "OK", content = @Content(array = @ArraySchema(schema = @Schema(implementation = TransformationDTO.class)))) })
     public Response getTransformations(@Context Request request) {
-        logger.debug("Received HTTP GET request at '{}'", uriInfo.getPath());
+        logger.debug("Received HTTP GET by request at '{}'", Objects.requireNonNull(uriInfo).getPath());
 
-        if (lastModified != null) {
-            Response.ResponseBuilder responseBuilder = request.evaluatePreconditions(lastModified);
+        Date currentLastModified = lastModifiedRef.get();
+        if (currentLastModified != null) {
+            Response.ResponseBuilder responseBuilder = request.evaluatePreconditions(currentLastModified);
             if (responseBuilder != null) {
                 // send 304 Not Modified
+                logger.debug("Transformation not modified since {}", currentLastModified);
                 return responseBuilder.build();
             }
         } else {
-            lastModified = Date.from(Instant.now().truncatedTo(ChronoUnit.SECONDS));
+            Date now = Date.from(Instant.now().truncatedTo(ChronoUnit.SECONDS));
+            lastModifiedRef.compareAndSet(null, now);
+            logger.debug("Initialized lastModified to {}", now);
         }
+
         Stream<TransformationDTO> stream = transformationRegistry.stream().map(TransformationDTO::new)
-                .peek(c -> c.editable = isEditable(c.uid));
-        return Response.ok(new Stream2JSONInputStream(stream)).lastModified(lastModified)
+                .peek(dto -> dto.setEditable(isEditable(dto.getUid())));
+        return Response.ok(new Stream2JSONInputStream(stream)).lastModified(lastModifiedRef.get())
                 .cacheControl(RESTConstants.CACHE_CONTROL).build();
     }
 
+    /**
+     * Return all registered transformation service identifiers.
+     *
+     * @return JSON array of service names (String)
+     */
     @GET
     @Path("services")
     @Produces(MediaType.APPLICATION_JSON)
@@ -144,15 +170,25 @@ public class TransformationResource implements RESTResource {
         try {
             Collection<ServiceReference<TransformationService>> refs = bundleContext
                     .getServiceReferences(TransformationService.class, null);
-            Stream<String> services = refs.stream()
-                    .map(ref -> (String) ref.getProperty(TransformationService.SERVICE_PROPERTY_NAME))
+
+            // defensive: OSGi may return null or empty; guard against NPE
+            Stream<String> services = (refs == null ? Stream.<ServiceReference<TransformationService>> empty()
+                    : refs.stream()).map(ref -> (String) ref.getProperty(TransformationService.SERVICE_PROPERTY_NAME))
                     .filter(Objects::nonNull).map(Objects::requireNonNull).sorted();
+
             return Response.ok(new Stream2JSONInputStream(services)).build();
         } catch (InvalidSyntaxException e) {
+            logger.error("Failed to query TransformationService references", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).build();
         }
     }
 
+    /**
+     * Return a single transformation by UID.
+     *
+     * @param uid transformation UID
+     * @return 200 OK with DTO or 404 if not found
+     */
     @GET
     @Path("{uid}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -160,17 +196,24 @@ public class TransformationResource implements RESTResource {
             @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = Transformation.class))),
             @ApiResponse(responseCode = "404", description = "Not found") })
     public Response getTransformation(@PathParam("uid") @Parameter(description = "Transformation UID") String uid) {
-        logger.debug("Received HTTP GET request at '{}'", uriInfo.getPath());
+        logger.debug("Received HTTP GET by uid '{}' at '{}'", uid, Objects.requireNonNull(uriInfo).getPath());
 
         Transformation transformation = transformationRegistry.get(uid);
         if (transformation == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
         TransformationDTO dto = new TransformationDTO(transformation);
-        dto.editable = isEditable(uid);
+        dto.setEditable(isEditable(uid));
         return Response.ok(dto).build();
     }
 
+    /**
+     * Create or update transformation.
+     *
+     * @param uid path UID
+     * @param newTransformation incoming DTO (may be null)
+     * @return appropriate HTTP status
+     */
     @PUT
     @Path("{uid}")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -181,10 +224,12 @@ public class TransformationResource implements RESTResource {
             @ApiResponse(responseCode = "405", description = "Transformation not editable") })
     public Response putTransformation(@PathParam("uid") @Parameter(description = "Transformation UID") String uid,
             @Parameter(description = "transformation", required = true) @Nullable TransformationDTO newTransformation) {
-        logger.debug("Received HTTP PUT request at '{}'", uriInfo.getPath());
+        logger.debug("Received HTTP PUT request for transformation '{}' at '{}'", uid,
+                Objects.requireNonNull(uriInfo).getPath());
 
         Transformation oldTransformation = transformationRegistry.get(uid);
         if (oldTransformation != null && !isEditable(uid)) {
+            logger.warn("Attempt to update non-editable transformation '{}'", uid);
             return Response.status(Response.Status.METHOD_NOT_ALLOWED).build();
         }
 
@@ -192,20 +237,23 @@ public class TransformationResource implements RESTResource {
             return Response.status(Response.Status.BAD_REQUEST).entity("Content missing.").build();
         }
 
-        if (!uid.equals(newTransformation.uid)) {
+        if (!uid.equals(newTransformation.getUid())) {
             return Response.status(Response.Status.BAD_REQUEST).entity("UID of transformation and path not matching.")
                     .build();
         }
 
-        Transformation transformation = new Transformation(newTransformation.uid, newTransformation.label,
-                newTransformation.type, newTransformation.configuration);
+        Transformation transformation = new Transformation(newTransformation.getUid(), newTransformation.getLabel(),
+                newTransformation.getType(), newTransformation.getConfiguration());
         try {
             if (oldTransformation != null) {
                 managedTransformationProvider.update(transformation);
+                logger.info("Updated transformation '{}'", uid);
             } else {
                 managedTransformationProvider.add(transformation);
+                logger.info("Added transformation '{}'", uid);
             }
         } catch (IllegalArgumentException e) {
+            logger.error("Bad request while adding/updating transformation '{}': {}", uid, e.getMessage(), e);
             return Response.status(Response.Status.BAD_REQUEST).entity(Objects.requireNonNullElse(e.getMessage(), ""))
                     .build();
         }
@@ -213,6 +261,12 @@ public class TransformationResource implements RESTResource {
         return Response.ok().build();
     }
 
+    /**
+     * Delete a transformation by UID if editable.
+     *
+     * @param uid transformation UID
+     * @return 200 OK if deleted, 404 if not found, 405 if not editable
+     */
     @DELETE
     @Path("{uid}")
     @Produces(MediaType.TEXT_PLAIN)
@@ -221,7 +275,8 @@ public class TransformationResource implements RESTResource {
             @ApiResponse(responseCode = "404", description = "UID not found"),
             @ApiResponse(responseCode = "405", description = "Transformation not editable") })
     public Response deleteTransformation(@PathParam("uid") @Parameter(description = "Transformation UID") String uid) {
-        logger.debug("Received HTTP DELETE request at '{}'", uriInfo.getPath());
+        logger.debug("Received HTTP DELETE request for transformation '{}' at '{}'", uid,
+                Objects.requireNonNull(uriInfo).getPath());
 
         Transformation oldTransformation = transformationRegistry.get(uid);
         if (oldTransformation == null) {
@@ -233,10 +288,17 @@ public class TransformationResource implements RESTResource {
         }
 
         managedTransformationProvider.remove(uid);
+        logger.info("Removed transformation '{}'", uid);
 
         return Response.ok().build();
     }
 
+    /**
+     * Helper that determines whether a managed transformation with the given UID exist.
+     *
+     * @param uid the transformation UID
+     * @return true if editable through ManagedTransformationProvider
+     */
     private boolean isEditable(String uid) {
         return managedTransformationProvider.get(uid) != null;
     }

@@ -16,6 +16,7 @@ import static org.openhab.core.io.rest.sse.internal.SseSinkItemInfo.*;
 import static org.openhab.core.io.rest.sse.internal.SseSinkTopicInfo.matchesTopic;
 
 import java.io.IOException;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -94,68 +95,121 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @NonNullByDefault
 public class SseResource implements RESTResource, SsePublisher {
 
-    // The URI path to this resource
+    /** The URI path to this resource */
     public static final String PATH_EVENTS = "events";
 
+    /** Custom header used to disable proxy buffering. */
     private static final String X_ACCEL_BUFFERING_HEADER = "X-Accel-Buffering";
 
+    /** Interval for sending ALIVE events. */
     public static final int ALIVE_INTERVAL_SECONDS = 10;
 
     private final Logger logger = LoggerFactory.getLogger(SseResource.class);
 
     private final ScheduledExecutorService scheduler = ThreadPoolManager
             .getScheduledPool(ThreadPoolManager.THREAD_POOL_NAME_COMMON);
+
+    /** Periodic job for sending ALIVE events. */
     private final ScheduledFuture<?> aliveEventJob;
 
+    /** JAX-RS SSE context. Must be injected by container. */
     private @Context @NonNullByDefault({}) Sse sse;
 
     private final SseBroadcaster<SseSinkItemInfo> itemStatesBroadcaster = new SseBroadcaster<>();
-    private final SseItemStatesEventBuilder itemStatesEventBuilder;
     private final SseBroadcaster<SseSinkTopicInfo> topicBroadcaster = new SseBroadcaster<>();
 
-    private ExecutorService executorService;
+    private final SseItemStatesEventBuilder itemStatesEventBuilder;
+
+    /** Single-thread executor for serial event dispatching. */
+    private final ExecutorService executorService;
 
     @Activate
     public SseResource(@Reference SseItemStatesEventBuilder itemStatesEventBuilder) {
-        this.executorService = Executors.newSingleThreadExecutor();
-        this.itemStatesEventBuilder = itemStatesEventBuilder;
+        this.itemStatesEventBuilder = Objects.requireNonNull(itemStatesEventBuilder);
+        this.executorService = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "openHAB-SSE-Dispatcher");
+            t.setDaemon(true);
+            return t;
+        });
 
-        aliveEventJob = scheduler.scheduleWithFixedDelay(() -> {
-            if (sse != null) {
-                logger.debug("Sending alive event to SSE connections");
-                OutboundSseEvent aliveEvent = sse.newEventBuilder().name("alive")
-                        .mediaType(MediaType.APPLICATION_JSON_TYPE).data(new AliveEvent()).build();
-                itemStatesBroadcaster.send(aliveEvent);
-                topicBroadcaster.send(aliveEvent);
-            }
-        }, 1, ALIVE_INTERVAL_SECONDS, TimeUnit.SECONDS);
+        this.aliveEventJob = scheduler.scheduleWithFixedDelay(this::sendAliveEvents, 1, ALIVE_INTERVAL_SECONDS,
+                TimeUnit.SECONDS);
     }
 
     @Deactivate
     public void deactivate() {
+        logger.debug("Deactivating SseResource; shutting down executors and broadcasters");
+
         itemStatesBroadcaster.close();
         topicBroadcaster.close();
-        executorService.shutdown();
+
+        executorService.shutdownNow();
         aliveEventJob.cancel(true);
+    }
+
+    private void sendAliveEvents() {
+        if (sse == null) {
+            return;
+        }
+
+        try {
+            logger.debug("Broadcasting ALIVE SSE event");
+            OutboundSseEvent aliveEvent = sse.newEventBuilder().name("alive").mediaType(MediaType.APPLICATION_JSON_TYPE)
+                    .data(new AliveEvent()).build();
+
+            itemStatesBroadcaster.send(aliveEvent);
+            topicBroadcaster.send(aliveEvent);
+        } catch (Exception e) {
+            logger.warn("Failed sending ALIVE event: {}", e.getMessage(), e);
+        }
     }
 
     @Override
     public void broadcast(Event event) {
         if (sse == null) {
-            logger.trace("broadcast skipped (no one listened since activation)");
+            logger.trace("Broadcast skipped - no SSE client connection established yet.");
             return;
         }
 
         executorService.execute(() -> {
-            handleEventBroadcastTopic(event);
-            if (event instanceof ItemStateChangedEvent changedEvent) {
-                handleEventBroadcastItemState(changedEvent);
+            try {
+                handleEventBroadcastTopic(event);
+
+                if (event instanceof ItemStateChangedEvent changedEvent) {
+                    handleEventBroadcastItemState(changedEvent);
+                }
+            } catch (Exception e) {
+                logger.warn("Error handling SSE broadcast of event {}", event.getTopic(), e);
             }
         });
     }
 
+    private void handleEventBroadcastTopic(Event event) {
+        final EventDTO eventDTO = SseUtil.buildDTO(event);
+        final OutboundSseEvent sseEvent = SseUtil.buildEvent(sse.newEventBuilder(), eventDTO);
+
+        topicBroadcaster.sendIf(sseEvent, matchesTopic(eventDTO.getTopic()));
+    }
+
+    @GET
+    @Produces(MediaType.SERVER_SENT_EVENTS)
+    @Operation(operationId = "getEvents", summary = "Get all events.", responses = {
+            @ApiResponse(responseCode = "200", description = "OK"),
+            @ApiResponse(responseCode = "400", description = "Topic is empty or contains invalid characters") })
+    public void listen(@Context final SseEventSink sseEventSink, @Context final HttpServletResponse response,
+            @QueryParam("topics") @Parameter(description = "topics") String topicFilter) {
+
+        if (!SseUtil.isValidTopicFilter(topicFilter)) {
+            response.setStatus(Status.BAD_REQUEST.getStatusCode());
+            return;
+        }
+
+        topicBroadcaster.add(sseEventSink, new SseSinkTopicInfo(topicFilter));
+        addCommonResponseHeaders(response);
+    }
+
     private void addCommonResponseHeaders(final HttpServletResponse response) {
-        // Disables proxy buffering when using an nginx http server proxy for this response.
+        // Disables proxy buffering when using a nginx http server proxy for this response.
         // This allows you to not disable proxy buffering in nginx and still have working sse
         response.addHeader(X_ACCEL_BUFFERING_HEADER, "no");
 
@@ -165,33 +219,9 @@ public class SseResource implements RESTResource, SsePublisher {
 
         try {
             response.flushBuffer();
-        } catch (final IOException ex) {
-            logger.trace("flush buffer failed", ex);
+        } catch (final IOException e) {
+            logger.trace("Failed to flush SSE response buffer: {}", e.getMessage(), e);
         }
-    }
-
-    @GET
-    @Produces(MediaType.SERVER_SENT_EVENTS)
-    @Operation(operationId = "getEvents", summary = "Get all events.", responses = {
-            @ApiResponse(responseCode = "200", description = "OK"),
-            @ApiResponse(responseCode = "400", description = "Topic is empty or contains invalid characters") })
-    public void listen(@Context final SseEventSink sseEventSink, @Context final HttpServletResponse response,
-            @QueryParam("topics") @Parameter(description = "topics") String eventFilter) {
-        if (!SseUtil.isValidTopicFilter(eventFilter)) {
-            response.setStatus(Status.BAD_REQUEST.getStatusCode());
-            return;
-        }
-
-        topicBroadcaster.add(sseEventSink, new SseSinkTopicInfo(eventFilter));
-
-        addCommonResponseHeaders(response);
-    }
-
-    private void handleEventBroadcastTopic(Event event) {
-        final EventDTO eventDTO = SseUtil.buildDTO(event);
-        final OutboundSseEvent sseEvent = SseUtil.buildEvent(sse.newEventBuilder(), eventDTO);
-
-        topicBroadcaster.sendIf(sseEvent, matchesTopic(eventDTO.topic));
     }
 
     /**
@@ -225,7 +255,7 @@ public class SseResource implements RESTResource, SsePublisher {
     @Operation(operationId = "updateItemListForStateUpdates", summary = "Changes the list of items a SSE connection will receive state updates to.", responses = {
             @ApiResponse(responseCode = "200", description = "OK"),
             @ApiResponse(responseCode = "404", description = "Unknown connectionId") })
-    public Object updateTrackedItems(@PathParam("connectionId") @Nullable String connectionId,
+    public Response updateTrackedItems(@PathParam("connectionId") @Nullable String connectionId,
             @Parameter(description = "items") @Nullable Set<String> itemNames) {
         if (connectionId == null) {
             return Response.status(Status.NOT_FOUND).build();
@@ -254,7 +284,9 @@ public class SseResource implements RESTResource, SsePublisher {
      */
     public void handleEventBroadcastItemState(final ItemStateChangedEvent stateChangeEvent) {
         String itemName = stateChangeEvent.getItemName();
+
         boolean isTracked = itemStatesBroadcaster.getInfoIf(info -> true).anyMatch(tracksItem(itemName));
+
         if (isTracked) {
             OutboundSseEvent event = itemStatesEventBuilder.buildEvent(sse.newEventBuilder(), Set.of(itemName));
             if (event != null) {
@@ -263,6 +295,7 @@ public class SseResource implements RESTResource, SsePublisher {
         }
     }
 
+    /** ALIVE event model. */
     private static class AliveEvent {
         public final String type = "ALIVE";
         public final int interval = ALIVE_INTERVAL_SECONDS;

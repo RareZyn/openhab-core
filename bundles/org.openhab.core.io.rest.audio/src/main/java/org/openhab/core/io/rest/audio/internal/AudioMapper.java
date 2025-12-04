@@ -13,18 +13,24 @@
 package org.openhab.core.io.rest.audio.internal;
 
 import java.util.Locale;
+import java.util.Objects;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.openhab.core.audio.AudioSink;
 import org.openhab.core.audio.AudioSource;
 
 /**
- * Mapper class that maps {@link AudioSink} and {@link AudioSource} instanced to their respective DTOs.
+ * Mapper class that maps {@link AudioSink} and {@link AudioSource} instanced to their respective DTOs
+ * used by REST API responses.
  *
  * @author Laurent Garnier - Initial contribution
  */
 @NonNullByDefault
 public class AudioMapper {
+
+    private AudioMapper() {
+        // Utility class – prevent instantiation
+    }
 
     /**
      * Maps an {@link AudioSource} to an {@link AudioSourceDTO}.
@@ -35,6 +41,8 @@ public class AudioMapper {
      * @return the corresponding DTO
      */
     public static AudioSourceDTO map(AudioSource source, Locale locale) {
+        Objects.requireNonNull(source, "AudioSource must not be null");
+        Objects.requireNonNull(locale, "Locale must not be null");
         return new AudioSourceDTO(source.getId(), source.getLabel(locale));
     }
 
@@ -47,6 +55,8 @@ public class AudioMapper {
      * @return the corresponding DTO
      */
     public static AudioSinkDTO map(AudioSink sink, Locale locale) {
+        Objects.requireNonNull(sink, "AudioSink must not be null");
+        Objects.requireNonNull(locale, "Locale must not be null");
         return new AudioSinkDTO(sink.getId(), sink.getLabel(locale));
     }
 }
