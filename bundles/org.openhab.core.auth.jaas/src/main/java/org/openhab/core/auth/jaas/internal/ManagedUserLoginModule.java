@@ -19,6 +19,7 @@ import javax.security.auth.callback.CallbackHandler;
 import javax.security.auth.login.LoginException;
 import javax.security.auth.spi.LoginModule;
 
+import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.core.auth.AuthenticationException;
 import org.openhab.core.auth.Credentials;
 import org.openhab.core.auth.UserRegistry;
@@ -29,7 +30,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * This {@link LoginModule} delegates the authentication to a {@link UserRegistry}
+ * This {@link LoginModule} delegates the authentication to a {@link UserRegistry}.
+ *
+ * This login module is part of openHAB's JAAS-based authentication system.
+ * It retrieves the UserRegistry service from the OSGi service registry and
+ * uses it to authenticate the credentials provided in the Subject.
+ *
+ * <p>
+ * <b>Thread-safety:</b> Each authentication attempt creates a new instance of this
+ * login module, so no synchronization is required for instance variables.
+ * </p>
  *
  * @author Yannick Schaus - initial contribution
  */
@@ -37,7 +47,9 @@ public class ManagedUserLoginModule implements LoginModule {
 
     private final Logger logger = LoggerFactory.getLogger(ManagedUserLoginModule.class);
 
-    private UserRegistry userRegistry;
+    private @Nullable UserRegistry userRegistry;
+    private @Nullable ServiceReference<UserRegistry> serviceReference;
+    private @Nullable BundleContext bundleContext;
 
     private Subject subject;
 
@@ -47,40 +59,109 @@ public class ManagedUserLoginModule implements LoginModule {
         this.subject = subject;
     }
 
+    /**
+     * Performs the authentication by retrieving the UserRegistry service and
+     * delegating the credential verification to it.
+     *
+     * @return true if authentication succeeds
+     * @throws LoginException if authentication fails or if the UserRegistry service cannot be obtained
+     */
     @Override
     public boolean login() throws LoginException {
         try {
             // try to get the UserRegistry instance
-            BundleContext bundleContext = FrameworkUtil.getBundle(UserRegistry.class).getBundleContext();
-            ServiceReference<UserRegistry> serviceReference = bundleContext.getServiceReference(UserRegistry.class);
+            bundleContext = FrameworkUtil.getBundle(UserRegistry.class).getBundleContext();
+            if (bundleContext == null) {
+                logger.error("Cannot obtain BundleContext for UserRegistry");
+                throw new LoginException("Authentication infrastructure not available");
+            }
+
+            serviceReference = bundleContext.getServiceReference(UserRegistry.class);
+            if (serviceReference == null) {
+                logger.error("UserRegistry service reference is null");
+                throw new LoginException("UserRegistry service not available");
+            }
 
             userRegistry = bundleContext.getService(serviceReference);
+            if (userRegistry == null) {
+                logger.error("Cannot obtain UserRegistry service");
+                throw new LoginException("UserRegistry service not available");
+            }
+        } catch (IllegalStateException e) {
+            logger.error("Bundle context is no longer valid", e);
+            throw new LoginException("Authentication infrastructure not available: " + e.getMessage());
+        } catch (LoginException e) {
+            // Re-throw LoginException as-is
+            throw e;
         } catch (Exception e) {
-            logger.error("Cannot initialize the ManagedLoginModule", e);
-            throw new LoginException("Authorization failed");
+            logger.error("Unexpected error initializing ManagedUserLoginModule", e);
+            throw new LoginException("Authentication failed due to unexpected error: " + e.getMessage());
         }
 
         try {
+            if (this.subject.getPrivateCredentials().isEmpty()) {
+                logger.warn("No credentials provided in subject");
+                throw new LoginException("No credentials provided");
+            }
+
             Credentials credentials = (Credentials) this.subject.getPrivateCredentials().iterator().next();
             userRegistry.authenticate(credentials);
             return true;
         } catch (AuthenticationException e) {
+            logger.debug("Authentication failed: {}", e.getMessage());
             throw new LoginException(e.getMessage());
         }
     }
 
+    /**
+     * Commits the authentication (phase 2 of JAAS two-phase commit).
+     *
+     * @return true to indicate successful commit
+     * @throws LoginException if the commit fails
+     */
     @Override
     public boolean commit() throws LoginException {
+        // No additional state to commit in this simple implementation
         return true;
     }
 
+    /**
+     * Aborts the authentication attempt (rollback phase).
+     * This is called if the overall authentication fails.
+     *
+     * @return true if abort succeeds
+     * @throws LoginException if the abort fails
+     */
     @Override
     public boolean abort() throws LoginException {
-        return false;
+        cleanup();
+        return true;
     }
 
+    /**
+     * Logs out the authenticated subject.
+     *
+     * @return true if logout succeeds
+     * @throws LoginException if the logout fails
+     */
     @Override
     public boolean logout() throws LoginException {
-        return false;
+        cleanup();
+        return true;
+    }
+
+    /**
+     * Cleans up resources, including releasing the OSGi service reference.
+     */
+    private void cleanup() {
+        if (bundleContext != null && serviceReference != null) {
+            try {
+                bundleContext.ungetService(serviceReference);
+            } catch (IllegalStateException e) {
+                logger.debug("Bundle context no longer valid during cleanup: {}", e.getMessage());
+            }
+            serviceReference = null;
+        }
+        userRegistry = null;
     }
 }

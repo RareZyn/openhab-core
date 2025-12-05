@@ -14,8 +14,10 @@ package org.openhab.core.auth.jaas.internal;
 
 import java.io.IOException;
 import java.security.Principal;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import javax.security.auth.Subject;
 import javax.security.auth.callback.Callback;
@@ -55,6 +57,24 @@ public class JaasAuthenticationProvider implements AuthenticationProvider {
 
     private @Nullable String realmName;
 
+    /**
+     * Authenticates the provided credentials using JAAS.
+     *
+     * This method performs the following steps:
+     * 1. Validates the credentials type and content
+     * 2. Switches the context ClassLoader to enable JAAS to load the login module
+     * 3. Creates a JAAS LoginContext and performs authentication
+     * 4. Extracts roles from the authenticated subject
+     * 5. Clears sensitive password data from memory
+     *
+     * Note: ClassLoader switching is required because JAAS uses the context ClassLoader
+     * to discover login modules, and in an OSGi environment, the calling bundle's
+     * ClassLoader may not have visibility to the authentication infrastructure.
+     *
+     * @param credentials the credentials to authenticate (must be UsernamePasswordCredentials)
+     * @return an Authentication object containing the username and roles
+     * @throws AuthenticationException if authentication fails or credentials are invalid
+     */
     @Override
     public Authentication authenticate(final Credentials credentials) throws AuthenticationException {
         if (realmName == null) { // configuration is not yet ready or set
@@ -67,8 +87,19 @@ public class JaasAuthenticationProvider implements AuthenticationProvider {
 
         UsernamePasswordCredentials userCredentials = (UsernamePasswordCredentials) credentials;
         final String name = userCredentials.getUsername();
-        final char[] password = userCredentials.getPassword().toCharArray();
+        final String passwordString = userCredentials.getPassword();
 
+        // Validate username
+        if (name.isBlank()) {
+            throw new AuthenticationException("Username cannot be empty.");
+        }
+
+        // Validate password
+        if (passwordString.isEmpty()) {
+            throw new AuthenticationException("Password cannot be empty.");
+        }
+
+        final char[] password = passwordString.toCharArray();
         final ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
         try {
             Principal userPrincipal = new GenericUser(name);
@@ -97,21 +128,35 @@ public class JaasAuthenticationProvider implements AuthenticationProvider {
             String message = e.getMessage();
             throw new AuthenticationException(message != null ? message : "An unexpected LoginException occurred");
         } finally {
+            // Security: Clear password from memory to reduce exposure window
+            Arrays.fill(password, '\0');
             Thread.currentThread().setContextClassLoader(contextClassLoader);
         }
     }
 
+    /**
+     * Creates an Authentication object from the authenticated subject.
+     *
+     * @param name the username
+     * @param subject the authenticated JAAS subject containing principals (roles)
+     * @return an Authentication object with the username and extracted roles
+     */
     private Authentication getAuthentication(String name, Subject subject) {
         return new Authentication(name, getRoles(subject.getPrincipals()));
     }
 
+    /**
+     * Extracts role names from the set of principals.
+     *
+     * All principals in the subject are converted to role strings. This includes
+     * both the user principal and any additional role principals added by the
+     * login module.
+     *
+     * @param principals the set of principals from the authenticated subject
+     * @return an array of role names
+     */
     private String[] getRoles(Set<Principal> principals) {
-        String[] roles = new String[principals.size()];
-        int i = 0;
-        for (Principal principal : principals) {
-            roles[i++] = principal.getName();
-        }
-        return roles;
+        return principals.stream().map(Principal::getName).collect(Collectors.toList()).toArray(new String[0]);
     }
 
     @Activate
@@ -119,12 +164,23 @@ public class JaasAuthenticationProvider implements AuthenticationProvider {
         modified(properties);
     }
 
+    /**
+     * Called when the component is deactivated.
+     *
+     * No cleanup is required because:
+     * - The JAAS LoginContext is created per-authentication and automatically cleaned up
+     * - No persistent state or resources are held by this provider
+     * - The realm configuration is lightweight and doesn't require disposal
+     *
+     * @param properties the component properties (unused)
+     */
     @Deactivate
     protected void deactivate(Map<String, Object> properties) {
+        // No cleanup required - stateless authentication provider
     }
 
     @Modified
-    protected void modified(Map<String, Object> properties) {
+    protected void modified(@Nullable Map<String, Object> properties) {
         if (properties == null) {
             realmName = DEFAULT_REALM;
             return;

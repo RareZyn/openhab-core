@@ -80,7 +80,35 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * The {@link ThingActionsResource} allows retrieving and executing thing actions via REST API
+ * REST resource for discovering and executing thing-specific actions.
+ *
+ * <p>
+ * Thing actions are special automation actions that are provided by thing bindings
+ * to interact with specific devices or services. Examples include:
+ * <ul>
+ * <li>Sending notifications via messaging services</li>
+ * <li>Executing commands on smart devices</li>
+ * <li>Triggering scenes or presets</li>
+ * </ul>
+ * </p>
+ *
+ * <p>
+ * This resource enables:
+ * <ul>
+ * <li>Discovering available actions for a specific thing</li>
+ * <li>Executing actions with custom input parameters</li>
+ * <li>Retrieving action metadata (inputs, outputs, descriptions)</li>
+ * </ul>
+ * </p>
+ *
+ * <p>
+ * Actions are scoped to their binding (e.g., "pushover", "telegram") and identified
+ * by action UIDs in the format "scope.actionTypeUid" or "scope.actionTypeUid#signatureHash".
+ * </p>
+ *
+ * <p>
+ * All endpoints require USER or ADMIN role and support localization via Accept-Language header.
+ * </p>
  *
  * @author Jan N. Klug - Initial contribution
  * @author Laurent Garnier - API enhanced to be able to run thing actions in Main UI
@@ -265,6 +293,18 @@ public class ThingActionsResource implements RESTResource {
         }
     }
 
+    /**
+     * Extracts the scope name from a ThingActions instance.
+     *
+     * <p>
+     * The scope is defined by the {@link ThingActionsScope} annotation on the
+     * ThingActions implementation class. The scope identifies the binding or
+     * service that provides the actions (e.g., "pushover", "telegram").
+     * </p>
+     *
+     * @param actions the thing actions instance
+     * @return the scope name, or null if the annotation is not present
+     */
     private @Nullable String getScope(ThingActions actions) {
         ThingActionsScope scopeAnnotation = actions.getClass().getAnnotation(ThingActionsScope.class);
         if (scopeAnnotation == null) {

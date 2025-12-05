@@ -73,6 +73,10 @@ public class JsonAddonService extends AbstractRemoteAddonService {
     private static final String SERVICE_ID = "json";
     private static final String ADDON_ID_PREFIX = SERVICE_ID + ":";
 
+    // Network timeout constants (in milliseconds)
+    private static final int CONNECT_TIMEOUT = 10000; // 10 seconds
+    private static final int READ_TIMEOUT = 30000; // 30 seconds
+
     private static final String CONFIG_URLS = "urls";
     private static final String CONFIG_SHOW_UNSTABLE = "showUnstable";
 
@@ -134,6 +138,24 @@ public class JsonAddonService extends AbstractRemoteAddonService {
         return SERVICE_NAME;
     }
 
+    /**
+     * Fetches addons from all configured JSON marketplace URLs.
+     *
+     * <p>
+     * Each URL is expected to return a JSON array of addon entries. The method:
+     * <ol>
+     * <li>Fetches JSON from each configured URL (with 10s connect / 30s read timeout)</li>
+     * <li>Parses the JSON into {@link AddonEntryDTO} objects</li>
+     * <li>Filters out unstable addons (unless showUnstable is enabled)</li>
+     * <li>Converts DTOs to {@link Addon} objects</li>
+     * </ol>
+     *
+     * <p>
+     * <b>Error handling:</b> Network errors or JSON parsing failures for individual URLs are logged
+     * and do not prevent fetching from other URLs. Failed URLs return empty lists.
+     *
+     * @return combined list of addons from all configured URLs
+     */
     @Override
     @SuppressWarnings("unchecked")
     protected List<Addon> getRemoteAddons() {
@@ -141,13 +163,30 @@ public class JsonAddonService extends AbstractRemoteAddonService {
             try {
                 URL url = URI.create(urlString).toURL();
                 URLConnection connection = url.openConnection();
+                connection.setConnectTimeout(CONNECT_TIMEOUT);
+                connection.setReadTimeout(READ_TIMEOUT);
                 connection.addRequestProperty("Accept", "application/json");
                 try (Reader reader = new InputStreamReader(connection.getInputStream())) {
                     Type type = TypeToken.getParameterized(List.class, AddonEntryDTO.class).getType();
-                    return (List<AddonEntryDTO>) Objects.requireNonNull(gson.fromJson(reader, type));
+                    List<AddonEntryDTO> result = (List<AddonEntryDTO>) gson.fromJson(reader, type);
+                    if (result == null) {
+                        logger.warn("Received null response from JSON addon service URL: {}", urlString);
+                        return List.<AddonEntryDTO> of();
+                    }
+                    return result;
                 }
+            } catch (java.net.SocketTimeoutException e) {
+                logger.warn("Timeout while fetching addons from '{}': {}", urlString, e.getMessage());
+                return List.<AddonEntryDTO> of();
             } catch (IOException e) {
-                return List.of();
+                logger.warn("Network error while fetching addons from '{}': {}", urlString, e.getMessage());
+                return List.<AddonEntryDTO> of();
+            } catch (com.google.gson.JsonSyntaxException e) {
+                logger.error("Failed to parse JSON from '{}': {}", urlString, e.getMessage());
+                return List.<AddonEntryDTO> of();
+            } catch (Exception e) {
+                logger.error("Unexpected error while fetching addons from '{}': {}", urlString, e.getMessage(), e);
+                return List.<AddonEntryDTO> of();
             }
         }).flatMap(List::stream).filter(Objects::nonNull).map(e -> (AddonEntryDTO) e).filter(this::showAddon)
                 .map(this::fromAddonEntry).toList();
@@ -177,8 +216,21 @@ public class JsonAddonService extends AbstractRemoteAddonService {
         return cachedAddons.stream().filter(e -> queryId.equals(e.getUid())).findAny().orElse(null);
     }
 
+    /**
+     * Attempts to extract an addon ID from a URI.
+     *
+     * <p>
+     * <b>Current implementation:</b> This method always returns null as the JSON addon service
+     * does not define a URI-to-ID mapping strategy. Unlike the community marketplace which uses
+     * Discourse topic URLs, JSON addons are identified by their UID from the JSON data.
+     *
+     * @param addonURI the URI to parse
+     * @return always null (not implemented for JSON addon service)
+     */
     @Override
     public @Nullable String getAddonId(URI addonURI) {
+        logger.debug("getAddonId() called for JSON addon service with URI: {}. This operation is not supported.",
+                addonURI);
         return null;
     }
 

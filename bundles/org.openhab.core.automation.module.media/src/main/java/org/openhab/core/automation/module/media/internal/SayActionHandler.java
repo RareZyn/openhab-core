@@ -46,7 +46,13 @@ public class SayActionHandler extends BaseActionModuleHandler {
         super(module);
         this.voiceManager = voiceManager;
 
-        this.text = module.getConfiguration().get(PARAM_TEXT).toString();
+        // Validate required configuration parameter
+        Object textParam = module.getConfiguration().get(PARAM_TEXT);
+        if (textParam == null) {
+            throw new IllegalArgumentException(
+                    "Configuration parameter '" + PARAM_TEXT + "' is required for SayAction but was not provided");
+        }
+        this.text = textParam.toString();
 
         Object sinkParam = module.getConfiguration().get(PARAM_SINK);
         this.sink = sinkParam != null ? sinkParam.toString() : null;

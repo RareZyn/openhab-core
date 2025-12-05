@@ -28,6 +28,25 @@ import org.slf4j.LoggerFactory;
 /**
  * This is a ModuleHandler implementation for Actions that play a sound file from the file system.
  *
+ * <p>
+ * This handler executes the "media.PlayAction" automation action type, which plays audio files from the configured
+ * sounds directory through the openHAB audio system.
+ * </p>
+ *
+ * <h3>Configuration Parameters:</h3>
+ * <ul>
+ * <li><b>sound</b> (required): The filename of the sound to play (e.g., "doorbell.mp3")</li>
+ * <li><b>sink</b> (optional): The audio sink ID to use for playback. If null, uses the default sink.</li>
+ * <li><b>volume</b> (optional): Playback volume as a percentage (0-100). If null, uses current sink volume.</li>
+ * </ul>
+ *
+ * <h3>Behavior:</h3>
+ * <ul>
+ * <li>Validates that the 'sound' parameter is provided during construction</li>
+ * <li>Logs errors if playback fails but does not throw exceptions</li>
+ * <li>Returns null as this action does not produce output values</li>
+ * </ul>
+ *
  * @author Kai Kreuzer - Initial contribution
  * @author Christoph Weitkamp - Added parameter volume
  */
@@ -51,7 +70,13 @@ public class PlayActionHandler extends BaseActionModuleHandler {
         super(module);
         this.audioManager = audioManager;
 
-        this.sound = module.getConfiguration().get(PARAM_SOUND).toString();
+        // Validate required configuration parameter
+        Object soundParam = module.getConfiguration().get(PARAM_SOUND);
+        if (soundParam == null) {
+            throw new IllegalArgumentException(
+                    "Configuration parameter '" + PARAM_SOUND + "' is required for PlayAction but was not provided");
+        }
+        this.sound = soundParam.toString();
 
         Object sinkParam = module.getConfiguration().get(PARAM_SINK);
         this.sink = sinkParam != null ? sinkParam.toString() : null;

@@ -19,7 +19,15 @@ import org.openhab.core.automation.RuleManager;
 import org.openhab.core.automation.dto.RuleDTOMapper;
 
 /**
- * This is a utility class to convert between the respective object and its DTO.
+ * Utility class for converting Rule domain objects to EnrichedRuleDTO data transfer objects.
+ *
+ * <p>
+ * This mapper extends {@link RuleDTOMapper} to populate additional runtime information:
+ * <ul>
+ * <li>Current rule status from the rule engine</li>
+ * <li>Editability flag based on whether the rule is managed or file-based</li>
+ * </ul>
+ * </p>
  *
  * @author Markus Rathgeb - Initial contribution
  * @author Kai Kreuzer - added editable field
@@ -27,6 +35,23 @@ import org.openhab.core.automation.dto.RuleDTOMapper;
 @NonNullByDefault
 public class EnrichedRuleDTOMapper extends RuleDTOMapper {
 
+    /**
+     * Converts a Rule to an EnrichedRuleDTO with runtime state.
+     *
+     * <p>
+     * This method:
+     * <ol>
+     * <li>Copies all base rule properties (UID, name, triggers, etc.)</li>
+     * <li>Queries the rule engine for current status information</li>
+     * <li>Checks if the rule is managed (editable) or file-based (read-only)</li>
+     * </ol>
+     * </p>
+     *
+     * @param rule the rule to convert
+     * @param ruleEngine the rule manager to query for status
+     * @param managedRuleProvider the provider to check if rule is managed
+     * @return enriched DTO with base properties and runtime state
+     */
     public static EnrichedRuleDTO map(final Rule rule, final RuleManager ruleEngine,
             final ManagedRuleProvider managedRuleProvider) {
         final EnrichedRuleDTO enrichedRuleDto = new EnrichedRuleDTO();

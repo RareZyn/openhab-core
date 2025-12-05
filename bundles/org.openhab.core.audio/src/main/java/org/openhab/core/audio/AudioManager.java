@@ -121,7 +121,7 @@ public interface AudioManager {
      * You can optionally add ":ms" where ms is an int value to customize the note/silence milliseconds duration
      * (defaults to 200ms).
      *
-     * @param melody The url to stream from or null if streaming should be stopped.
+     * @param melody The melody string to parse and play.
      */
     void playMelody(String melody);
 
@@ -133,7 +133,7 @@ public interface AudioManager {
      * You can optionally add ":ms" where ms is an int value to customize the note/silence milliseconds duration
      * (defaults to 200ms).
      *
-     * @param melody The url to stream from or null if streaming should be stopped.
+     * @param melody The melody string to parse and play.
      * @param sinkId The id of the audio sink to use or null for the default.
      */
     void playMelody(String melody, @Nullable String sinkId);
@@ -146,7 +146,7 @@ public interface AudioManager {
      * You can optionally add ":ms" where ms is an int value to customize the note/silence milliseconds duration
      * (defaults to 200ms).
      *
-     * @param melody The url to stream from or null if streaming should be stopped.
+     * @param melody The melody string to parse and play.
      * @param sinkId The id of the audio sink to use or null for the default.
      * @param volume The volume to be used or null if the default notification volume should be used
      */
