@@ -31,16 +31,35 @@ public class ManagedUserBackingEngineFactory implements BackingEngineFactory {
 
     private final UserRegistry userRegistry;
 
+    /**
+     * Constructs a new ManagedUserBackingEngineFactory with the specified UserRegistry.
+     *
+     * @param userRegistry the UserRegistry for user operations, must not be null
+     */
     @Activate
     public ManagedUserBackingEngineFactory(@Reference UserRegistry userRegistry) {
+        if (userRegistry == null) {
+            throw new IllegalArgumentException("UserRegistry cannot be null");
+        }
         this.userRegistry = userRegistry;
     }
 
+    /**
+     * Gets the module class name for this backing engine.
+     *
+     * @return the module class name
+     */
     @Override
     public String getModuleClass() {
         return ManagedUserRealm.MODULE_CLASS;
     }
 
+    /**
+     * Builds a new BackingEngine instance.
+     *
+     * @param options the options map, may be null
+     * @return a new ManagedUserBackingEngine instance
+     */
     @Override
     public BackingEngine build(Map<String, ?> options) {
         return new ManagedUserBackingEngine(userRegistry);

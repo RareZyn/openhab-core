@@ -74,11 +74,31 @@ public class DslItemFileConverter extends AbstractItemFileGenerator implements I
     private final GenericMetadataProvider metadataProvider;
     private final ConfigDescriptionRegistry configDescriptionRegistry;
 
+    /**
+     * Constructs a new DslItemFileConverter with the specified dependencies.
+     *
+     * @param modelRepository the ModelRepository for model operations, must not be null
+     * @param itemProvider the GenericItemProvider for item operations, must not be null
+     * @param metadataProvider the GenericMetadataProvider for metadata operations, must not be null
+     * @param configDescriptionRegistry the ConfigDescriptionRegistry for configuration descriptions, must not be null
+     */
     @Activate
     public DslItemFileConverter(final @Reference ModelRepository modelRepository,
             final @Reference GenericItemProvider itemProvider,
             final @Reference GenericMetadataProvider metadataProvider,
             final @Reference ConfigDescriptionRegistry configDescriptionRegistry) {
+        if (modelRepository == null) {
+            throw new IllegalArgumentException("ModelRepository cannot be null");
+        }
+        if (itemProvider == null) {
+            throw new IllegalArgumentException("GenericItemProvider cannot be null");
+        }
+        if (metadataProvider == null) {
+            throw new IllegalArgumentException("GenericMetadataProvider cannot be null");
+        }
+        if (configDescriptionRegistry == null) {
+            throw new IllegalArgumentException("ConfigDescriptionRegistry cannot be null");
+        }
         this.modelRepository = modelRepository;
         this.itemProvider = itemProvider;
         this.metadataProvider = metadataProvider;
@@ -90,11 +110,29 @@ public class DslItemFileConverter extends AbstractItemFileGenerator implements I
         return "DSL";
     }
 
+    /**
+     * Sets the items to be generated in the file format.
+     *
+     * @param id the identifier for the generation, must not be null
+     * @param items the list of items to generate, must not be null
+     * @param metadata the collection of metadata, must not be null
+     * @param stateFormatters the map of state formatters, must not be null
+     * @param hideDefaultParameters whether to hide default parameters
+     */
     @Override
     public void setItemsToBeGenerated(String id, List<Item> items, Collection<Metadata> metadata,
             Map<String, String> stateFormatters, boolean hideDefaultParameters) {
-        if (items.isEmpty()) {
+        if (id == null || id.isEmpty()) {
             return;
+        }
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        if (metadata == null) {
+            metadata = List.of();
+        }
+        if (stateFormatters == null) {
+            stateFormatters = Map.of();
         }
         ItemModel model = ItemsFactory.eINSTANCE.createItemModel();
         for (Item item : items) {
@@ -104,8 +142,20 @@ public class DslItemFileConverter extends AbstractItemFileGenerator implements I
         elementsToGenerate.put(id, model);
     }
 
+    /**
+     * Generates the file format for the items with the specified ID.
+     *
+     * @param id the identifier for the generation, must not be null
+     * @param out the output stream to write to, must not be null
+     */
     @Override
     public void generateFileFormat(String id, OutputStream out) {
+        if (id == null || id.isEmpty()) {
+            return;
+        }
+        if (out == null) {
+            throw new IllegalArgumentException("Output stream cannot be null");
+        }
         ItemModel model = elementsToGenerate.remove(id);
         if (model != null) {
             modelRepository.generateFileFormat(out, "items", model);
@@ -301,29 +351,83 @@ public class DslItemFileConverter extends AbstractItemFileGenerator implements I
         return "DSL";
     }
 
+    /**
+     * Starts parsing a file format string.
+     *
+     * @param syntax the syntax string to parse, must not be null
+     * @param errors the list to collect errors, must not be null
+     * @param warnings the list to collect warnings, must not be null
+     * @return the model name if parsing was successful, null otherwise
+     */
     @Override
     public @Nullable String startParsingFileFormat(String syntax, List<String> errors, List<String> warnings) {
+        if (syntax == null) {
+            if (errors != null) {
+                errors.add("Syntax string cannot be null");
+            }
+            return null;
+        }
+        if (errors == null) {
+            throw new IllegalArgumentException("Errors list cannot be null");
+        }
+        if (warnings == null) {
+            throw new IllegalArgumentException("Warnings list cannot be null");
+        }
         ByteArrayInputStream inputStream = new ByteArrayInputStream(syntax.getBytes());
         return modelRepository.createIsolatedModel("items", inputStream, errors, warnings);
     }
 
+    /**
+     * Gets the parsed items from a model.
+     *
+     * @param modelName the model name, must not be null
+     * @return a collection of parsed items, or an empty collection if the model is not found
+     */
     @Override
     public Collection<Item> getParsedItems(String modelName) {
+        if (modelName == null) {
+            return List.of();
+        }
         return itemProvider.getAllFromModel(modelName);
     }
 
+    /**
+     * Gets the parsed metadata from a model.
+     *
+     * @param modelName the model name, must not be null
+     * @return a collection of parsed metadata, or an empty collection if the model is not found
+     */
     @Override
     public Collection<Metadata> getParsedMetadata(String modelName) {
+        if (modelName == null) {
+            return List.of();
+        }
         return metadataProvider.getAllFromModel(modelName);
     }
 
+    /**
+     * Gets the parsed state formatters from a model.
+     *
+     * @param modelName the model name, must not be null
+     * @return a map of state formatters, or an empty map if the model is not found
+     */
     @Override
     public Map<String, String> getParsedStateFormatters(String modelName) {
+        if (modelName == null) {
+            return Map.of();
+        }
         return itemProvider.getStateFormattersFromModel(modelName);
     }
 
+    /**
+     * Finishes parsing and cleans up the model.
+     *
+     * @param modelName the model name to clean up, must not be null
+     */
     @Override
     public void finishParsingFileFormat(String modelName) {
-        modelRepository.removeModel(modelName);
+        if (modelName != null) {
+            modelRepository.removeModel(modelName);
+        }
     }
 }

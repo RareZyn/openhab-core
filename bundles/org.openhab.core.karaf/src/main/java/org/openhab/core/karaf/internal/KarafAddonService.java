@@ -67,9 +67,25 @@ public class KarafAddonService implements AddonService {
 
     private final AddonInfoRegistry addonInfoRegistry;
 
+    /**
+     * Constructs a new KarafAddonService with the specified dependencies.
+     *
+     * @param featureInstaller the FeatureInstaller for add-on operations, must not be null
+     * @param featuresService the FeaturesService for querying Karaf features, must not be null
+     * @param addonInfoRegistry the AddonInfoRegistry for add-on metadata, must not be null
+     */
     @Activate
     public KarafAddonService(final @Reference FeatureInstaller featureInstaller,
             final @Reference FeaturesService featuresService, @Reference AddonInfoRegistry addonInfoRegistry) {
+        if (featureInstaller == null) {
+            throw new IllegalArgumentException("FeatureInstaller cannot be null");
+        }
+        if (featuresService == null) {
+            throw new IllegalArgumentException("FeaturesService cannot be null");
+        }
+        if (addonInfoRegistry == null) {
+            throw new IllegalArgumentException("AddonInfoRegistry cannot be null");
+        }
         this.featureInstaller = featureInstaller;
         this.featuresService = featuresService;
         this.addonInfoRegistry = addonInfoRegistry;
@@ -105,14 +121,27 @@ public class KarafAddonService implements AddonService {
                 && FeatureInstaller.ADDON_TYPES.contains(getAddonType(feature.getName()));
     }
 
+    /**
+     * Gets a specific add-on by ID.
+     *
+     * @param id the add-on ID, must not be null or empty
+     * @param locale the locale for localized information, may be null
+     * @return the add-on, or null if not found
+     */
     @Override
     public @Nullable Addon getAddon(String id, @Nullable Locale locale) {
+        if (id == null || id.isEmpty()) {
+            return null;
+        }
         Feature feature;
         try {
             feature = featuresService.getFeature(FeatureInstaller.PREFIX + id);
+            if (feature == null) {
+                return null;
+            }
             return getAddon(feature, locale);
         } catch (Exception e) {
-            logger.error("Exception while querying feature '{}'", id);
+            logger.error("Exception while querying feature '{}': {}", id, e.getMessage());
             return null;
         }
     }
@@ -122,7 +151,17 @@ public class KarafAddonService implements AddonService {
         return format == null ? null : String.format(format, name);
     }
 
+    /**
+     * Converts a Karaf Feature to an Addon object.
+     *
+     * @param feature the Karaf feature to convert, must not be null
+     * @param locale the locale for localized information, may be null
+     * @return the Addon object
+     */
     private Addon getAddon(Feature feature, @Nullable Locale locale) {
+        if (feature == null) {
+            throw new IllegalArgumentException("Feature cannot be null");
+        }
         String name = getName(feature.getName());
         String type = getAddonType(feature.getName());
         String uid = type + Addon.ADDON_SEPARATOR + name;
@@ -158,13 +197,29 @@ public class KarafAddonService implements AddonService {
         return AddonType.DEFAULT_TYPES;
     }
 
+    /**
+     * Installs an add-on with the specified ID.
+     *
+     * @param id the add-on ID to install, must not be null or empty
+     */
     @Override
     public void install(String id) {
+        if (id == null || id.isEmpty()) {
+            return;
+        }
         featureInstaller.addAddon(getAddonType(id), getName(id));
     }
 
+    /**
+     * Uninstalls an add-on with the specified ID.
+     *
+     * @param id the add-on ID to uninstall, must not be null or empty
+     */
     @Override
     public void uninstall(String id) {
+        if (id == null || id.isEmpty()) {
+            return;
+        }
         featureInstaller.removeAddon(getAddonType(id), getName(id));
     }
 

@@ -68,30 +68,30 @@ public interface SerialPort extends Closeable {
             throws UnsupportedCommOperationException;
 
     /**
-     * Gets port baud rate.
+     * Gets the current baud rate of the serial port.
      *
-     * @return baud rate
+     * @return the baud rate in bits per second
      */
     int getBaudRate();
 
     /**
-     * Gets number of port data bits.
+     * Gets the number of data bits per character for the serial port.
      *
-     * @return data bits
+     * @return the number of data bits (typically 5, 6, 7, or 8)
      */
     int getDataBits();
 
     /**
-     * Gets number of port stop bits.
+     * Gets the number of stop bits for the serial port.
      *
-     * @return stop bits count
+     * @return the number of stop bits (1, 2, or 3 for 1.5)
      */
     int getStopBits();
 
     /**
-     * Gets port parity.
+     * Gets the parity setting for the serial port.
      *
-     * @return parity
+     * @return the parity value (0=NONE, 1=ODD, 2=EVEN, 3=MARK, 4=SPACE)
      */
     int getParity();
 
@@ -272,9 +272,9 @@ public interface SerialPort extends Closeable {
     void setFlowControlMode(int flowcontrolRtsctsOut) throws UnsupportedCommOperationException;
 
     /**
-     * Gets the flow control mode value.
+     * Gets the current flow control mode for the serial port.
      *
-     * @return flowcontrol value.
+     * @return the flow control mode value (combination of FLOWCONTROL_* constants)
      */
     int getFlowControlMode();
 

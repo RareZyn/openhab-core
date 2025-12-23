@@ -384,22 +384,27 @@ public class MqttBrokerConnection {
     }
 
     /**
-     * @return connection password.
+     * Get the connection password.
+     *
+     * @return The password used for MQTT broker authentication, or null if not set
      */
     public @Nullable String getPassword() {
         return password;
     }
 
     /**
-     * @return optional user name for the MQTT connection.
+     * Get the optional user name for the MQTT connection.
+     *
+     * @return The username used for MQTT broker authentication, or null if not set
      */
-
     public @Nullable String getUser() {
         return user;
     }
 
     /**
-     * @return quality of service level.
+     * Get the quality of service level.
+     *
+     * @return The QoS level (0, 1, or 2) used for message delivery
      */
     public int getQos() {
         return qos;
@@ -420,7 +425,9 @@ public class MqttBrokerConnection {
     }
 
     /**
-     * Return the last will object or null if there is none.
+     * Get the last will and testament configuration.
+     *
+     * @return The last will and testament object, or null if none is configured
      */
     public @Nullable MqttWillAndTestament getLastWill() {
         return lastWill;
@@ -467,16 +474,18 @@ public class MqttBrokerConnection {
     }
 
     /**
-     * Get client id to use when connecting to the broker.
+     * Get the client ID used when connecting to the broker.
      *
-     * @return value clientId to use.
+     * @return The client ID string used for MQTT broker identification
      */
     public String getClientId() {
         return clientId;
     }
 
     /**
-     * Returns the connection state
+     * Get the current connection state of this MQTT broker connection.
+     *
+     * @return The current connection state (DISCONNECTED, CONNECTING, or CONNECTED)
      */
     public MqttConnectionState connectionState() {
         if (isConnecting) {

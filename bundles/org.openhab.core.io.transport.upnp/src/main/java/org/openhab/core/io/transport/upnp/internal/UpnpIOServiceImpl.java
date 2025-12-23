@@ -222,27 +222,45 @@ public class UpnpIOServiceImpl implements UpnpIOService, RegistryListener {
         return upnpService.getRegistry().getDevice(new UDN(participant.getUDN()), false);
     }
 
+    /**
+     * Subscribe to a GENA subscription for the specified participant and service.
+     *
+     * @param participant the participant to subscribe for, must not be null
+     * @param serviceID the UPnP service to subscribe to, must not be null
+     * @param duration the subscription duration in seconds, must be positive
+     */
     @Override
     public void addSubscription(UpnpIOParticipant participant, String serviceID, int duration) {
-        if (participant != null && serviceID != null) {
-            registerParticipant(participant);
-            Device device = getDevice(participant);
-            if (device != null) {
-                Service subService = searchSubService(serviceID, device);
-                if (subService != null) {
-                    logger.trace("Setting up an UPNP service subscription '{}' for particpant '{}'", serviceID,
-                            participant.getUDN());
+        if (participant == null) {
+            logger.warn("Cannot add subscription: participant is null");
+            return;
+        }
+        if (serviceID == null || serviceID.isEmpty()) {
+            logger.warn("Cannot add subscription: serviceID is null or empty for participant '{}'", participant.getUDN());
+            return;
+        }
+        if (duration <= 0) {
+            logger.warn("Cannot add subscription: duration must be positive (was: {}) for participant '{}'", duration,
+                    participant.getUDN());
+            return;
+        }
+        registerParticipant(participant);
+        Device device = getDevice(participant);
+        if (device != null) {
+            Service subService = searchSubService(serviceID, device);
+            if (subService != null) {
+                logger.trace("Setting up a UPnP service subscription '{}' for participant '{}'", serviceID,
+                        participant.getUDN());
 
-                    UpnpSubscriptionCallback callback = new UpnpSubscriptionCallback(subService, duration);
-                    subscriptionCallbacks.put(subService, callback);
-                    upnpService.getControlPoint().execute(callback);
-                } else {
-                    logger.trace("Could not find service '{}' for device '{}'", serviceID,
-                            device.getIdentity().getUdn());
-                }
+                UpnpSubscriptionCallback callback = new UpnpSubscriptionCallback(subService, duration);
+                subscriptionCallbacks.put(subService, callback);
+                upnpService.getControlPoint().execute(callback);
             } else {
-                logger.trace("Could not find an upnp device for participant '{}'", participant.getUDN());
+                logger.trace("Could not find service '{}' for device '{}'", serviceID,
+                        device.getIdentity().getUdn());
             }
+        } else {
+            logger.trace("Could not find an upnp device for participant '{}'", participant.getUDN());
         }
     }
 
@@ -263,27 +281,40 @@ public class UpnpIOServiceImpl implements UpnpIOService, RegistryListener {
         return subService;
     }
 
+    /**
+     * Unsubscribe from a GENA subscription for the specified participant and service.
+     *
+     * @param participant the participant to unsubscribe for, must not be null
+     * @param serviceID the UPnP service to unsubscribe from, must not be null
+     */
     @Override
     public void removeSubscription(UpnpIOParticipant participant, String serviceID) {
-        if (participant != null && serviceID != null) {
-            Device device = getDevice(participant);
-            if (device != null) {
-                Service subService = searchSubService(serviceID, device);
-                if (subService != null) {
-                    logger.trace("Removing an UPNP service subscription '{}' for particpant '{}'", serviceID,
-                            participant.getUDN());
+        if (participant == null) {
+            logger.warn("Cannot remove subscription: participant is null");
+            return;
+        }
+        if (serviceID == null || serviceID.isEmpty()) {
+            logger.warn("Cannot remove subscription: serviceID is null or empty for participant '{}'",
+                    participant.getUDN());
+            return;
+        }
+        Device device = getDevice(participant);
+        if (device != null) {
+            Service subService = searchSubService(serviceID, device);
+            if (subService != null) {
+                logger.trace("Removing a UPnP service subscription '{}' for participant '{}'", serviceID,
+                        participant.getUDN());
 
-                    UpnpSubscriptionCallback callback = subscriptionCallbacks.remove(subService);
-                    if (callback != null) {
-                        callback.end();
-                    }
-                } else {
-                    logger.trace("Could not find service '{}' for device '{}'", serviceID,
-                            device.getIdentity().getUdn());
+                UpnpSubscriptionCallback callback = subscriptionCallbacks.remove(subService);
+                if (callback != null) {
+                    callback.end();
                 }
             } else {
-                logger.trace("Could not find an upnp device for participant '{}'", participant.getUDN());
+                logger.trace("Could not find service '{}' for device '{}'", serviceID,
+                        device.getIdentity().getUdn());
             }
+        } else {
+            logger.trace("Could not find an upnp device for participant '{}'", participant.getUDN());
         }
     }
 
@@ -422,11 +453,24 @@ public class UpnpIOServiceImpl implements UpnpIOService, RegistryListener {
         }
     }
 
+    /**
+     * Updates the device status for a participant and notifies if the status changed.
+     *
+     * @param participant the participant whose device status to update, must not be null
+     * @param newStatus the new status (true = reachable, false = unreachable)
+     */
     private void setDeviceStatus(UpnpIOParticipant participant, boolean newStatus) {
+        if (participant == null) {
+            return;
+        }
         if (!Objects.equals(currentStates.get(participant), newStatus)) {
             currentStates.put(participant, newStatus);
             logger.debug("Device '{}' reachability status changed to '{}'", participant.getUDN(), newStatus);
-            participant.onStatusChanged(newStatus);
+            try {
+                participant.onStatusChanged(newStatus);
+            } catch (Exception e) {
+                logger.error("Participant threw an exception onStatusChanged for device '{}'", participant.getUDN(), e);
+            }
         }
     }
 
@@ -483,22 +527,47 @@ public class UpnpIOServiceImpl implements UpnpIOService, RegistryListener {
         }
     }
 
+    /**
+     * Establish a polling mechanism to check the status of a specific UDN device.
+     *
+     * @param participant the participant to set up polling for, must not be null
+     * @param serviceID the service to use for polling, must not be null
+     * @param actionID the action to call, must not be null
+     * @param interval the polling interval in seconds (0 uses default), must be non-negative
+     */
     @Override
     public void addStatusListener(UpnpIOParticipant participant, String serviceID, String actionID, int interval) {
-        if (participant != null) {
-            registerParticipant(participant);
-
-            int pollingInterval = interval == 0 ? DEFAULT_POLLING_INTERVAL : interval;
-
-            // remove the previous polling job, if any
-            stopPollingForParticipant(participant);
-
-            currentStates.put(participant, true);
-
-            Runnable pollingRunnable = new UPNPPollingRunnable(participant, serviceID, actionID);
-            pollingJobs.put(participant,
-                    scheduler.scheduleWithFixedDelay(pollingRunnable, 0, pollingInterval, TimeUnit.SECONDS));
+        if (participant == null) {
+            logger.warn("Cannot add status listener: participant is null");
+            return;
         }
+        if (serviceID == null || serviceID.isEmpty()) {
+            logger.warn("Cannot add status listener: serviceID is null or empty for participant '{}'",
+                    participant.getUDN());
+            return;
+        }
+        if (actionID == null || actionID.isEmpty()) {
+            logger.warn("Cannot add status listener: actionID is null or empty for participant '{}'",
+                    participant.getUDN());
+            return;
+        }
+        if (interval < 0) {
+            logger.warn("Cannot add status listener: interval must be non-negative (was: {}) for participant '{}'",
+                    interval, participant.getUDN());
+            return;
+        }
+        registerParticipant(participant);
+
+        int pollingInterval = interval == 0 ? DEFAULT_POLLING_INTERVAL : interval;
+
+        // remove the previous polling job, if any
+        stopPollingForParticipant(participant);
+
+        currentStates.put(participant, true);
+
+        Runnable pollingRunnable = new UPNPPollingRunnable(participant, serviceID, actionID);
+        pollingJobs.put(participant,
+                scheduler.scheduleWithFixedDelay(pollingRunnable, 0, pollingInterval, TimeUnit.SECONDS));
     }
 
     private void stopPollingForParticipant(UpnpIOParticipant participant) {
@@ -510,11 +579,18 @@ public class UpnpIOServiceImpl implements UpnpIOService, RegistryListener {
         }
     }
 
+    /**
+     * Stops the polling mechanism for checking the status of a specific UDN device.
+     *
+     * @param participant the participant to remove polling for, must not be null
+     */
     @Override
     public void removeStatusListener(UpnpIOParticipant participant) {
-        if (participant != null) {
-            unregisterParticipant(participant);
+        if (participant == null) {
+            logger.warn("Cannot remove status listener: participant is null");
+            return;
         }
+        unregisterParticipant(participant);
     }
 
     @Override

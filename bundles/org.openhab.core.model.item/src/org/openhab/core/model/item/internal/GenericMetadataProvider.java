@@ -51,15 +51,28 @@ public class GenericMetadataProvider extends AbstractProvider<Metadata> implemen
     private final ReadWriteLock lock = new ReentrantReadWriteLock(true);
 
     /**
-     * Adds metadata to this provider
+     * Adds metadata to this provider.
      *
-     * @param modelName the model name
-     * @param bindingType
-     * @param itemName
-     * @param configuration
+     * @param modelName the model name, must not be null
+     * @param bindingType the binding type (namespace), must not be null
+     * @param itemName the item name, must not be null
+     * @param value the metadata value, must not be null
+     * @param configuration the configuration map, may be null
      */
     public void addMetadata(String modelName, String bindingType, String itemName, String value,
             @Nullable Map<String, Object> configuration) {
+        if (modelName == null || modelName.isEmpty()) {
+            return;
+        }
+        if (bindingType == null || bindingType.isEmpty()) {
+            return;
+        }
+        if (itemName == null || itemName.isEmpty()) {
+            return;
+        }
+        if (value == null) {
+            return;
+        }
         MetadataKey key = new MetadataKey(bindingType, itemName);
         Metadata md = new Metadata(key, value, configuration);
         try {
@@ -75,11 +88,14 @@ public class GenericMetadataProvider extends AbstractProvider<Metadata> implemen
     }
 
     /**
-     * Removes all meta-data for a given namespace
+     * Removes all meta-data for a given namespace.
      *
-     * @param namespace the namespace
+     * @param namespace the namespace, must not be null or empty
      */
     public void removeMetadataByNamespace(String namespace) {
+        if (namespace == null || namespace.isEmpty()) {
+            return;
+        }
         Map<String, Set<Metadata>> toBeNotified;
         try {
             lock.writeLock().lock();
@@ -109,12 +125,18 @@ public class GenericMetadataProvider extends AbstractProvider<Metadata> implemen
     }
 
     /**
-     * Removes all meta-data for a given item
+     * Removes all meta-data for a given item.
      *
-     * @param modelName the model name
-     * @param itemName the item name
+     * @param modelName the model name, must not be null
+     * @param itemName the item name, must not be null
      */
     public void removeMetadataByItemName(String modelName, String itemName) {
+        if (modelName == null || modelName.isEmpty()) {
+            return;
+        }
+        if (itemName == null || itemName.isEmpty()) {
+            return;
+        }
         Set<Metadata> toBeNotified;
         try {
             lock.writeLock().lock();
@@ -147,7 +169,16 @@ public class GenericMetadataProvider extends AbstractProvider<Metadata> implemen
         }
     }
 
+    /**
+     * Gets all metadata from a specific model.
+     *
+     * @param modelName the model name, must not be null
+     * @return a collection of metadata from the model, or an empty collection if the model is not found
+     */
     public Collection<Metadata> getAllFromModel(String modelName) {
+        if (modelName == null) {
+            return Set.of();
+        }
         try {
             lock.readLock().lock();
             Set<Metadata> set = metadata.getOrDefault(modelName, Set.of());

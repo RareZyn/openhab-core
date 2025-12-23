@@ -27,10 +27,30 @@ public class PortInUseException extends Exception {
     @Serial
     private static final long serialVersionUID = -2709480420743139383L;
 
+    /**
+     * Constructs a new PortInUseException with the specified detail message.
+     *
+     * @param message the detail message
+     */
+    public PortInUseException(String message) {
+        super(message);
+    }
+
+    /**
+     * Constructs a new PortInUseException with the specified detail message and cause.
+     *
+     * @param message the detail message
+     * @param cause the cause (which is saved for later retrieval by the {@link #getCause()} method)
+     */
     public PortInUseException(String message, Exception cause) {
         super(message, cause);
     }
 
+    /**
+     * Constructs a new PortInUseException with the specified cause.
+     *
+     * @param cause the cause (which is saved for later retrieval by the {@link #getCause()} method)
+     */
     public PortInUseException(Exception cause) {
         super(cause);
     }

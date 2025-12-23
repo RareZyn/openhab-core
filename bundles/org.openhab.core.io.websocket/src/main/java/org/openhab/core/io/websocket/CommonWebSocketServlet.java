@@ -95,13 +95,27 @@ public class CommonWebSocketServlet extends WebSocketServlet {
         webSocketServletFactory.setCreator(new CommonWebSocketCreator());
     }
 
+    /**
+     * Adds a WebSocket adapter to the servlet.
+     *
+     * @param wsAdapter the adapter to add, must not be null
+     */
     @Reference(cardinality = ReferenceCardinality.MULTIPLE, policy = ReferencePolicy.DYNAMIC)
     protected void addWebSocketAdapter(WebSocketAdapter wsAdapter) {
-        this.connectionHandlers.put(wsAdapter.getId(), wsAdapter);
+        if (wsAdapter != null && wsAdapter.getId() != null) {
+            this.connectionHandlers.put(wsAdapter.getId(), wsAdapter);
+        }
     }
 
+    /**
+     * Removes a WebSocket adapter from the servlet.
+     *
+     * @param wsAdapter the adapter to remove, must not be null
+     */
     protected void removeWebSocketAdapter(WebSocketAdapter wsAdapter) {
-        this.connectionHandlers.remove(wsAdapter.getId());
+        if (wsAdapter != null && wsAdapter.getId() != null) {
+            this.connectionHandlers.remove(wsAdapter.getId());
+        }
     }
 
     private class CommonWebSocketCreator implements WebSocketCreator {

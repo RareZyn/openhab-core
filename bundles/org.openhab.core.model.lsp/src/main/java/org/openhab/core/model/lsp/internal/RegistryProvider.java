@@ -41,8 +41,8 @@ import com.google.inject.Singleton;
 
 /**
  * Provides the Xtext Registry for the Language Server.
- *
- * It just piggy-backs the static Resgitry instance that the runtime bundles are using anyway.
+ * It just piggy-backs the static Registry instance that the runtime bundles are using anyway.
+ * This provider creates and manages the resource service provider registry for all supported DSL models.
  *
  * @author Simon Kaufmann - Initial contribution
  */
@@ -54,11 +54,28 @@ public class RegistryProvider implements Provider<IResourceServiceProvider.Regis
     private final ScriptServiceUtil scriptServiceUtil;
     private final ScriptEngine scriptEngine;
 
+    /**
+     * Constructs a new RegistryProvider with the specified dependencies.
+     *
+     * @param scriptServiceUtil the ScriptServiceUtil for script operations, must not be null
+     * @param scriptEngine the ScriptEngine for script execution, must not be null
+     */
     public RegistryProvider(ScriptServiceUtil scriptServiceUtil, ScriptEngine scriptEngine) {
+        if (scriptServiceUtil == null) {
+            throw new IllegalArgumentException("ScriptServiceUtil cannot be null");
+        }
+        if (scriptEngine == null) {
+            throw new IllegalArgumentException("ScriptEngine cannot be null");
+        }
         this.scriptServiceUtil = scriptServiceUtil;
         this.scriptEngine = scriptEngine;
     }
 
+    /**
+     * Gets the resource service provider registry, creating it if necessary.
+     *
+     * @return the registry instance, never null
+     */
     @Override
     public synchronized IResourceServiceProvider.Registry get() {
         IResourceServiceProvider.Registry registry = Objects.requireNonNullElse(this.registry, createRegistry());
@@ -66,6 +83,11 @@ public class RegistryProvider implements Provider<IResourceServiceProvider.Regis
         return registry;
     }
 
+    /**
+     * Creates a new resource service provider registry and registers all DSL model setups.
+     *
+     * @return the newly created registry, never null
+     */
     private IResourceServiceProvider.Registry createRegistry() {
         registerDefaultFactories();
 
@@ -81,6 +103,9 @@ public class RegistryProvider implements Provider<IResourceServiceProvider.Regis
         return registry;
     }
 
+    /**
+     * Registers default resource factories for EMF resource types.
+     */
     private void registerDefaultFactories() {
         if (!Resource.Factory.Registry.INSTANCE.getExtensionToFactoryMap().containsKey("ecore")) {
             Resource.Factory.Registry.INSTANCE.getExtensionToFactoryMap().put("ecore", new EcoreResourceFactoryImpl());
@@ -97,7 +122,19 @@ public class RegistryProvider implements Provider<IResourceServiceProvider.Regis
         }
     }
 
+    /**
+     * Registers a DSL model setup with the registry.
+     *
+     * @param registry the registry to register with, must not be null
+     * @param injector the injector for the DSL model, must not be null
+     */
     private void register(IResourceServiceProvider.Registry registry, Injector injector) {
+        if (registry == null) {
+            throw new IllegalArgumentException("Registry cannot be null");
+        }
+        if (injector == null) {
+            throw new IllegalArgumentException("Injector cannot be null");
+        }
         IResourceServiceProvider resourceServiceProvider = injector.getInstance(IResourceServiceProvider.class);
         FileExtensionProvider extensionProvider = injector.getInstance(FileExtensionProvider.class);
         for (String ext : extensionProvider.getFileExtensions()) {

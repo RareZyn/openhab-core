@@ -42,21 +42,47 @@ public class MappingUriExtensions extends UriExtensions {
 
     private @Nullable String clientLocation;
 
+    /**
+     * Constructs a new MappingUriExtensions with the specified config folder.
+     *
+     * @param configFolder the configuration folder path, must not be null or empty
+     */
     public MappingUriExtensions(String configFolder) {
+        if (configFolder == null || configFolder.isEmpty()) {
+            throw new IllegalArgumentException("Config folder cannot be null or empty");
+        }
         this.rawConfigFolder = configFolder;
         this.serverLocation = calcServerLocation(configFolder);
         logger.debug("The language server is using '{}' as its workspace", serverLocation);
     }
 
+    /**
+     * Calculates the server location from the config folder path.
+     *
+     * @param configFolder the configuration folder path, must not be null
+     * @return the server location URI string
+     */
     protected String calcServerLocation(String configFolder) {
+        if (configFolder == null) {
+            throw new IllegalArgumentException("Config folder cannot be null");
+        }
         Path configPath = Path.of(configFolder);
         Path absoluteConfigPath = configPath.toAbsolutePath();
         java.net.URI configPathURI = absoluteConfigPath.toUri();
         return removeTrailingSlash(configPathURI.toString());
     }
 
+    /**
+     * Converts a path with scheme to a URI, handling client-server path mapping.
+     *
+     * @param pathWithScheme the path with scheme (e.g., "file:///path"), must not be null
+     * @return the mapped URI
+     */
     @Override
     public URI toUri(@NonNullByDefault({}) String pathWithScheme) {
+        if (pathWithScheme == null || pathWithScheme.isEmpty()) {
+            throw new IllegalArgumentException("Path with scheme cannot be null or empty");
+        }
         String decodedPathWithScheme = URLDecoder.decode(pathWithScheme, StandardCharsets.UTF_8);
         String localClientLocation = clientLocation;
         if (localClientLocation != null && decodedPathWithScheme.startsWith(localClientLocation)) {
@@ -76,16 +102,34 @@ public class MappingUriExtensions extends UriExtensions {
         return URI.createURI(toPathAsInXtext212(javaNetUri));
     }
 
+    /**
+     * Converts a URI to a URI string, mapping server paths to client paths if needed.
+     *
+     * @param uri the URI to convert, must not be null
+     * @return the URI string representation
+     */
     @Override
     public String toUriString(@NonNullByDefault({}) URI uri) {
+        if (uri == null) {
+            throw new IllegalArgumentException("URI cannot be null");
+        }
         if (clientLocation == null) {
             return uri.toString();
         }
         return mapToClientPath(uri.toString());
     }
 
+    /**
+     * Converts a java.net.URI to a URI string, mapping server paths to client paths if needed.
+     *
+     * @param uri the java.net.URI to convert, must not be null
+     * @return the URI string representation
+     */
     @Override
     public String toUriString(@NonNullByDefault({}) java.net.URI uri) {
+        if (uri == null) {
+            throw new IllegalArgumentException("URI cannot be null");
+        }
         return toUriString(URI.createURI(uri.toString()));
     }
 
@@ -98,7 +142,16 @@ public class MappingUriExtensions extends UriExtensions {
         return clientPath;
     }
 
+    /**
+     * Removes a trailing slash from a path string if present.
+     *
+     * @param path the path string, must not be null
+     * @return the path without trailing slash
+     */
     protected final String removeTrailingSlash(String path) {
+        if (path == null) {
+            throw new IllegalArgumentException("Path cannot be null");
+        }
         if (path.endsWith("/")) {
             return path.substring(0, path.length() - 1);
         } else {
@@ -139,19 +192,59 @@ public class MappingUriExtensions extends UriExtensions {
         return null;
     }
 
+    /**
+     * Checks if the current path represents a folder (no file extension).
+     *
+     * @param currentPath the path to check, must not be null
+     * @return true if the path represents a folder, false otherwise
+     */
     private boolean isFolder(String currentPath) {
-        return !currentPath.substring(getLastPathSegmentIndex(currentPath)).contains(".");
+        if (currentPath == null) {
+            return false;
+        }
+        int lastIndex = getLastPathSegmentIndex(currentPath);
+        if (lastIndex < 0) {
+            return true;
+        }
+        return !currentPath.substring(lastIndex).contains(".");
     }
 
+    /**
+     * Checks if the current path points to the config folder.
+     *
+     * @param currentPath the path to check, must not be null
+     * @return true if the path ends with the config folder, false otherwise
+     */
     private boolean isPointingToConfigFolder(String currentPath) {
+        if (currentPath == null || rawConfigFolder == null) {
+            return false;
+        }
         return currentPath.endsWith("/" + rawConfigFolder);
     }
 
+    /**
+     * Gets the index of the last path segment separator.
+     *
+     * @param currentPath the path to analyze, must not be null
+     * @return the index of the last "/", or -1 if not found
+     */
     private int getLastPathSegmentIndex(String currentPath) {
+        if (currentPath == null) {
+            return -1;
+        }
         return removeTrailingSlash(currentPath).lastIndexOf("/");
     }
 
+    /**
+     * Maps a path with scheme from client location to server location.
+     *
+     * @param pathWithScheme the path with scheme to map, must not be null
+     * @return the mapped URI
+     */
     private URI map(String pathWithScheme) {
+        if (pathWithScheme == null) {
+            throw new IllegalArgumentException("Path with scheme cannot be null");
+        }
         java.net.URI javaNetUri = toURI(pathWithScheme, clientLocation);
         logger.trace("Going to map path {}", javaNetUri);
         URI ret = URI.createURI(toPathAsInXtext212(javaNetUri));
@@ -159,7 +252,17 @@ public class MappingUriExtensions extends UriExtensions {
         return ret;
     }
 
+    /**
+     * Converts a path with scheme to a java.net.URI, replacing client location with server location.
+     *
+     * @param pathWithScheme the path with scheme, must not be null
+     * @param currentPath the current path to replace, may be null
+     * @return the java.net.URI
+     */
     private java.net.URI toURI(String pathWithScheme, @Nullable String currentPath) {
+        if (pathWithScheme == null) {
+            throw new IllegalArgumentException("Path with scheme cannot be null");
+        }
         String path = currentPath == null ? pathWithScheme : pathWithScheme.replace(currentPath, serverLocation);
         return java.net.URI.create(path);
     }

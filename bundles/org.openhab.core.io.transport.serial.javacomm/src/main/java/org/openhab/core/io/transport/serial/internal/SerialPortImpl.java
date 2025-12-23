@@ -38,11 +38,15 @@ public class SerialPortImpl implements SerialPort {
     private final javax.comm.SerialPort sp;
 
     /**
-     * Constructor.
+     * Constructs a new SerialPortImpl wrapper around a Java Communications API serial port.
      *
-     * @param sp the underlying serial port implementation
+     * @param sp the underlying serial port implementation, must not be null
+     * @throws IllegalArgumentException if sp is null
      */
     public SerialPortImpl(final javax.comm.SerialPort sp) {
+        if (sp == null) {
+            throw new IllegalArgumentException("SerialPort cannot be null");
+        }
         this.sp = sp;
     }
 
@@ -51,13 +55,25 @@ public class SerialPortImpl implements SerialPort {
         sp.close();
     }
 
+    /**
+     * Sets the serial port parameters.
+     *
+     * @param baudrate the baud rate in bits per second
+     * @param dataBits the number of data bits (5, 6, 7, or 8)
+     * @param stopBits the number of stop bits (1, 2, or 3 for 1.5)
+     * @param parity the parity setting (0=NONE, 1=ODD, 2=EVEN, 3=MARK, 4=SPACE)
+     * @throws UnsupportedCommOperationException if the operation is not supported
+     */
     @Override
     public void setSerialPortParams(int baudrate, int dataBits, int stopBits, int parity)
             throws UnsupportedCommOperationException {
         try {
             sp.setSerialPortParams(baudrate, dataBits, stopBits, parity);
         } catch (javax.comm.UnsupportedCommOperationException ex) {
-            throw new UnsupportedCommOperationException(ex);
+            throw new UnsupportedCommOperationException(
+                    String.format("Unsupported serial port parameters: baudrate=%d, dataBits=%d, stopBits=%d, parity=%d",
+                            baudrate, dataBits, stopBits, parity),
+                    ex);
         }
     }
 
@@ -119,6 +135,13 @@ public class SerialPortImpl implements SerialPort {
         sp.setRTS(enable);
     }
 
+    /**
+     * Enables the receive timeout with the specified timeout value.
+     *
+     * @param timeout the timeout in milliseconds, must be non-negative
+     * @throws IllegalArgumentException if timeout is negative
+     * @throws UnsupportedCommOperationException if the operation is not supported
+     */
     @Override
     public void enableReceiveTimeout(int timeout) throws UnsupportedCommOperationException {
         if (timeout < 0) {
@@ -127,7 +150,8 @@ public class SerialPortImpl implements SerialPort {
         try {
             sp.enableReceiveTimeout(timeout);
         } catch (javax.comm.UnsupportedCommOperationException ex) {
-            throw new UnsupportedCommOperationException(ex);
+            throw new UnsupportedCommOperationException(
+                    String.format("Unsupported receive timeout operation: timeout=%d", timeout), ex);
         }
     }
 
@@ -141,21 +165,35 @@ public class SerialPortImpl implements SerialPort {
         return sp.getName();
     }
 
+    /**
+     * Sets the flow control mode for the serial port.
+     *
+     * @param flowcontrolRtsctsOut the flow control mode (combination of FLOWCONTROL_* constants)
+     * @throws UnsupportedCommOperationException if the operation is not supported
+     */
     @Override
     public void setFlowControlMode(int flowcontrolRtsctsOut) throws UnsupportedCommOperationException {
         try {
             sp.setFlowControlMode(flowcontrolRtsctsOut);
         } catch (javax.comm.UnsupportedCommOperationException e) {
-            throw new UnsupportedCommOperationException(e);
+            throw new UnsupportedCommOperationException(
+                    String.format("Unsupported flow control mode: %d", flowcontrolRtsctsOut), e);
         }
     }
 
+    /**
+     * Enables the receive threshold with the specified threshold value.
+     *
+     * @param threshold the threshold value in bytes
+     * @throws UnsupportedCommOperationException if the operation is not supported
+     */
     @Override
-    public void enableReceiveThreshold(int i) throws UnsupportedCommOperationException {
+    public void enableReceiveThreshold(int threshold) throws UnsupportedCommOperationException {
         try {
-            sp.enableReceiveThreshold(i);
+            sp.enableReceiveThreshold(threshold);
         } catch (javax.comm.UnsupportedCommOperationException e) {
-            throw new UnsupportedCommOperationException(e);
+            throw new UnsupportedCommOperationException(
+                    String.format("Unsupported receive threshold operation: threshold=%d", threshold), e);
         }
     }
 

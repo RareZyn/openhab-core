@@ -248,25 +248,82 @@ public class ModelRepositoryImpl implements ModelRepository {
         return ret;
     }
 
+    /**
+     * Adds a change listener to be notified of model repository changes.
+     *
+     * @param listener the listener to add, must not be null
+     */
     @Override
     public void addModelRepositoryChangeListener(ModelRepositoryChangeListener listener) {
-        listeners.add(listener);
+        if (listener != null) {
+            listeners.add(listener);
+        }
     }
 
+    /**
+     * Removes a change listener from model repository change notifications.
+     *
+     * @param listener the listener to remove, must not be null
+     */
     @Override
     public void removeModelRepositoryChangeListener(ModelRepositoryChangeListener listener) {
-        listeners.remove(listener);
+        if (listener != null) {
+            listeners.remove(listener);
+        }
     }
 
+    /**
+     * Creates an isolated model in the repository.
+     *
+     * @param modelType the model type (file extension), must not be null or empty
+     * @param inputStream an input stream with the model's content, must not be null
+     * @param errors the list to be used to fill the errors, must not be null
+     * @param warnings the list to be used to fill the warnings, must not be null
+     * @return the created model name if it was successfully processed, null otherwise
+     */
     @Override
     public @Nullable String createIsolatedModel(String modelType, InputStream inputStream, List<String> errors,
             List<String> warnings) {
+        if (modelType == null || modelType.isEmpty()) {
+            if (errors != null) {
+                errors.add("Model type cannot be null or empty");
+            }
+            return null;
+        }
+        if (inputStream == null) {
+            if (errors != null) {
+                errors.add("Input stream cannot be null");
+            }
+            return null;
+        }
+        if (errors == null) {
+            throw new IllegalArgumentException("Errors list cannot be null");
+        }
+        if (warnings == null) {
+            throw new IllegalArgumentException("Warnings list cannot be null");
+        }
         String name = "%sDSL_model_%d.%s".formatted(PREFIX_TMP_MODEL, ++counter, modelType);
         return addOrRefreshModel(name, inputStream, errors, warnings) ? name : null;
     }
 
+    /**
+     * Generates the DSL file format from a provided model type and model content.
+     *
+     * @param out the output stream to write the generated syntax to, must not be null
+     * @param modelType the model type (file extension), must not be null or empty
+     * @param modelContent the content of the model, must not be null
+     */
     @Override
     public void generateFileFormat(OutputStream out, String modelType, EObject modelContent) {
+        if (out == null) {
+            throw new IllegalArgumentException("Output stream cannot be null");
+        }
+        if (modelType == null || modelType.isEmpty()) {
+            throw new IllegalArgumentException("Model type cannot be null or empty");
+        }
+        if (modelContent == null) {
+            throw new IllegalArgumentException("Model content cannot be null");
+        }
         synchronized (resourceSet) {
             String name = "%sgenerated_DSL_%d.%s".formatted(PREFIX_TMP_MODEL, ++counter, modelType);
             Resource resource = resourceSet.createResource(URI.createURI(name));
@@ -274,7 +331,8 @@ public class ModelRepositoryImpl implements ModelRepository {
                 resource.getContents().add(modelContent);
                 resource.save(out, Map.of(XtextResource.OPTION_ENCODING, StandardCharsets.UTF_8.name()));
             } catch (IOException e) {
-                logger.warn("Exception when saving DSL model {}", resource.getURI().lastSegment());
+                logger.warn("Exception when saving DSL model {}: {}", resource.getURI().lastSegment(), e.getMessage(),
+                        e);
             } finally {
                 resourceSet.getResources().remove(resource);
             }
@@ -350,9 +408,22 @@ public class ModelRepositoryImpl implements ModelRepository {
         return true;
     }
 
+    /**
+     * Notifies all registered listeners about a model change.
+     *
+     * @param name the model name that changed, must not be null
+     * @param type the type of change event, must not be null
+     */
     private void notifyListeners(String name, EventType type) {
+        if (name == null || type == null) {
+            return;
+        }
         for (ModelRepositoryChangeListener listener : listeners) {
-            listener.modelChanged(name, type);
+            try {
+                listener.modelChanged(name, type);
+            } catch (Exception e) {
+                logger.error("Error notifying listener about model change for '{}': {}", name, e.getMessage(), e);
+            }
         }
     }
 }

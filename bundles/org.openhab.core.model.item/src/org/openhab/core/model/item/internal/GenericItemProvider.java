@@ -92,13 +92,26 @@ public class GenericItemProvider extends AbstractProvider<Item>
 
     private Integer rank;
 
+    /**
+     * Constructs a new GenericItemProvider with the specified dependencies.
+     *
+     * @param modelRepository the ModelRepository for accessing item models, must not be null
+     * @param genericMetadataProvider the GenericMetadataProvider for metadata operations, must not be null
+     * @param properties the component properties, may be null
+     */
     @Activate
     public GenericItemProvider(final @Reference ModelRepository modelRepository,
             final @Reference GenericMetadataProvider genericMetadataProvider, Map<String, Object> properties) {
+        if (modelRepository == null) {
+            throw new IllegalArgumentException("ModelRepository cannot be null");
+        }
+        if (genericMetadataProvider == null) {
+            throw new IllegalArgumentException("GenericMetadataProvider cannot be null");
+        }
         this.modelRepository = modelRepository;
         this.genericMetaDataProvider = genericMetadataProvider;
 
-        Object serviceRanking = properties.get(Constants.SERVICE_RANKING);
+        Object serviceRanking = properties != null ? properties.get(Constants.SERVICE_RANKING) : null;
         if (serviceRanking instanceof Integer integerValue) {
             rank = integerValue;
         } else {
@@ -127,10 +140,14 @@ public class GenericItemProvider extends AbstractProvider<Item>
     /**
      * Add another instance of an {@link ItemFactory}. Used by Declarative Services.
      *
-     * @param factory The {@link ItemFactory} to add.
+     * @param factory The {@link ItemFactory} to add, must not be null
      */
     @Reference(cardinality = ReferenceCardinality.AT_LEAST_ONE, policy = ReferencePolicy.DYNAMIC)
     public void addItemFactory(ItemFactory factory) {
+        if (factory == null) {
+            logger.warn("Cannot add null ItemFactory");
+            return;
+        }
         itemFactorys.add(factory);
         dispatchBindingsPerItemType(factory.getSupportedItemTypes());
     }
@@ -138,27 +155,53 @@ public class GenericItemProvider extends AbstractProvider<Item>
     /**
      * Removes the given {@link ItemFactory}. Used by Declarative Services.
      *
-     * @param factory The {@link ItemFactory} to remove.
+     * @param factory The {@link ItemFactory} to remove, must not be null
      */
     public void removeItemFactory(ItemFactory factory) {
-        itemFactorys.remove(factory);
-    }
-
-    @Reference(cardinality = ReferenceCardinality.MULTIPLE, policy = ReferencePolicy.DYNAMIC)
-    public void addBindingConfigReader(BindingConfigReader reader) {
-        if (!bindingConfigReaders.containsKey(reader.getBindingType())) {
-            bindingConfigReaders.put(reader.getBindingType(), reader);
-            genericMetaDataProvider.removeMetadataByNamespace(reader.getBindingType());
-            dispatchBindingsPerType(reader, new String[] { reader.getBindingType() });
-        } else {
-            logger.warn("Attempted to register a second BindingConfigReader of type '{}'."
-                    + " The previous reader will remain active!", reader.getBindingType());
+        if (factory != null) {
+            itemFactorys.remove(factory);
         }
     }
 
+    /**
+     * Adds a binding configuration reader. Used by Declarative Services.
+     *
+     * @param reader the BindingConfigReader to add, must not be null
+     */
+    @Reference(cardinality = ReferenceCardinality.MULTIPLE, policy = ReferencePolicy.DYNAMIC)
+    public void addBindingConfigReader(BindingConfigReader reader) {
+        if (reader == null) {
+            logger.warn("Cannot add null BindingConfigReader");
+            return;
+        }
+        String bindingType = reader.getBindingType();
+        if (bindingType == null || bindingType.isEmpty()) {
+            logger.warn("Cannot add BindingConfigReader with null or empty binding type");
+            return;
+        }
+        if (!bindingConfigReaders.containsKey(bindingType)) {
+            bindingConfigReaders.put(bindingType, reader);
+            genericMetaDataProvider.removeMetadataByNamespace(bindingType);
+            dispatchBindingsPerType(reader, new String[] { bindingType });
+        } else {
+            logger.warn("Attempted to register a second BindingConfigReader of type '{}'."
+                    + " The previous reader will remain active!", bindingType);
+        }
+    }
+
+    /**
+     * Removes a binding configuration reader. Used by Declarative Services.
+     *
+     * @param reader the BindingConfigReader to remove, must not be null
+     */
     public void removeBindingConfigReader(BindingConfigReader reader) {
-        if (bindingConfigReaders.get(reader.getBindingType()).equals(reader)) {
-            bindingConfigReaders.remove(reader.getBindingType());
+        if (reader == null) {
+            return;
+        }
+        String bindingType = reader.getBindingType();
+        if (bindingType != null && bindingConfigReaders.containsKey(bindingType)
+                && bindingConfigReaders.get(bindingType).equals(reader)) {
+            bindingConfigReaders.remove(bindingType);
         }
     }
 
@@ -172,11 +215,29 @@ public class GenericItemProvider extends AbstractProvider<Item>
         return items;
     }
 
+    /**
+     * Gets all items from a specific model.
+     *
+     * @param modelName the model name, must not be null
+     * @return a collection of items from the model, or an empty collection if the model is not found
+     */
     public Collection<Item> getAllFromModel(String modelName) {
+        if (modelName == null) {
+            return List.of();
+        }
         return itemsMap.getOrDefault(modelName, List.of());
     }
 
+    /**
+     * Gets state formatters from a specific model.
+     *
+     * @param modelName the model name, must not be null
+     * @return a map of item names to state formatters, or an empty map if the model is not found
+     */
     public Map<String, String> getStateFormattersFromModel(String modelName) {
+        if (modelName == null) {
+            return Map.of();
+        }
         return stateFormattersMap.getOrDefault(modelName, Map.of());
     }
 
@@ -294,10 +355,23 @@ public class GenericItemProvider extends AbstractProvider<Item>
         return format;
     }
 
+    /**
+     * Assigns tags from a ModelItem to an ActiveItem.
+     *
+     * @param modelItem the ModelItem containing tags, must not be null
+     * @param item the ActiveItem to assign tags to, must not be null
+     */
     private void assignTags(ModelItem modelItem, ActiveItem item) {
+        if (modelItem == null || item == null) {
+            return;
+        }
         List<String> tags = modelItem.getTags();
-        for (String tag : tags) {
-            item.addTag(tag);
+        if (tags != null) {
+            for (String tag : tags) {
+                if (tag != null && !tag.isEmpty()) {
+                    item.addTag(tag);
+                }
+            }
         }
     }
 
@@ -411,8 +485,17 @@ public class GenericItemProvider extends AbstractProvider<Item>
         }
     }
 
+    /**
+     * Called when a model in the repository has changed.
+     *
+     * @param modelName the name of the model that changed, must not be null
+     * @param type the type of change event, must not be null
+     */
     @Override
     public void modelChanged(String modelName, EventType type) {
+        if (modelName == null || type == null) {
+            return;
+        }
         if (modelName.endsWith("items")) {
             switch (type) {
                 case ADDED:

@@ -102,4 +102,43 @@ public class MqttBrokerConnectionConfig {
         }
         return b.toString();
     }
+
+    /**
+     * Validates the configuration parameters.
+     * 
+     * @throws IllegalArgumentException if any required parameter is invalid
+     */
+    public void validate() throws IllegalArgumentException {
+        final String hostValue = this.host;
+        if (hostValue == null || hostValue.isEmpty()) {
+            throw new IllegalArgumentException("Host cannot be null or empty");
+        }
+        final Integer portValue = this.port;
+        if (portValue != null && (portValue <= 0 || portValue > 65535)) {
+            throw new IllegalArgumentException("Port must be between 1 and 65535");
+        }
+        if (qos < 0 || qos > 2) {
+            throw new IllegalArgumentException("QoS must be 0, 1, or 2");
+        }
+        if (lwtQos < 0 || lwtQos > 2) {
+            throw new IllegalArgumentException("Last Will QoS must be 0, 1, or 2");
+        }
+        final Integer keepAliveValue = this.keepAlive;
+        if (keepAliveValue != null && keepAliveValue <= 0) {
+            throw new IllegalArgumentException("Keep alive interval must be greater than 0");
+        }
+        final String clientIDValue = this.clientID;
+        if (clientIDValue != null && clientIDValue.length() > 65535) {
+            throw new IllegalArgumentException("Client ID cannot be longer than 65535 characters");
+        }
+    }
+
+    /**
+     * Checks if the configuration has all required parameters set.
+     * 
+     * @return true if configuration is complete, false otherwise
+     */
+    public boolean isComplete() {
+        return host != null && !host.isEmpty();
+    }
 }

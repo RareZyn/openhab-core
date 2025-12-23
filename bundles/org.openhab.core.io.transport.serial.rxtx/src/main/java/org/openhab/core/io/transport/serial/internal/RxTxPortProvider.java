@@ -36,6 +36,9 @@ import gnu.io.CommPortIdentifier;
 import gnu.io.NoSuchPortException;
 
 /**
+ * Serial port provider implementation using the RXTX library (gnu.io).
+ * This provider supports local serial ports and uses the "rxtx" protocol scheme.
+ * Includes workarounds for symbolic link resolution and system property handling.
  *
  * @author Matthias Steigenberger - Initial contribution
  * @author Wouter Born - Fix serial ports missing when ports are added to system property
@@ -47,9 +50,23 @@ public class RxTxPortProvider implements SerialPortProvider {
 
     private final Logger logger = LoggerFactory.getLogger(RxTxPortProvider.class);
 
+    /**
+     * Gets a serial port identifier for the specified port URI.
+     *
+     * @param port the port URI, must not be null
+     * @return the serial port identifier, or null if the port does not exist
+     */
     @Override
     public @Nullable SerialPortIdentifier getPortIdentifier(URI port) {
+        if (port == null) {
+            logger.warn("Port URI is null, cannot get port identifier");
+            return null;
+        }
         String portPathAsString = port.getPath();
+        if (portPathAsString == null || portPathAsString.isEmpty()) {
+            logger.warn("Port URI path is null or empty: {}", port);
+            return null;
+        }
         try {
             // Resolving symbolic link is needed because of a bug with nrjavaserial
             // Until a new release with pull request #230 is included in openHAB,
@@ -63,14 +80,29 @@ public class RxTxPortProvider implements SerialPortProvider {
         } catch (NoSuchPortException | IOException e) {
             logger.debug("No SerialPortIdentifier found for: {}", portPathAsString, e);
             return null;
+        } catch (Exception e) {
+            logger.warn("Error getting port identifier for: {}", portPathAsString, e);
+            return null;
         }
     }
+
+    /**
+     * Gets the protocol types that this provider accepts.
+     *
+     * @return a stream containing the "rxtx" protocol type for local ports
+     */
 
     @Override
     public Stream<ProtocolType> getAcceptedProtocols() {
         return Stream.of(new ProtocolType(PathType.LOCAL, "rxtx"));
     }
 
+    /**
+     * Gets all available serial port identifiers from the RXTX library.
+     * Combines ports discovered by scanning and ports from system properties.
+     *
+     * @return a stream of serial port identifiers for all available serial ports
+     */
     @Override
     public Stream<SerialPortIdentifier> getSerialPortIdentifiers() {
         Stream<CommPortIdentifier> scanIds = SerialPortUtil.getPortIdentifiersUsingScan();

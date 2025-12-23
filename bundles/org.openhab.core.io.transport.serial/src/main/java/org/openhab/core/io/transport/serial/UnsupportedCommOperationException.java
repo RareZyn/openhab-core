@@ -27,10 +27,37 @@ public class UnsupportedCommOperationException extends Exception {
     @Serial
     private static final long serialVersionUID = 1L;
 
+    /**
+     * Constructs a new UnsupportedCommOperationException with no detail message.
+     */
     public UnsupportedCommOperationException() {
     }
 
+    /**
+     * Constructs a new UnsupportedCommOperationException with the specified detail message.
+     *
+     * @param message the detail message
+     */
+    public UnsupportedCommOperationException(String message) {
+        super(message);
+    }
+
+    /**
+     * Constructs a new UnsupportedCommOperationException with the specified cause.
+     *
+     * @param cause the cause (which is saved for later retrieval by the {@link #getCause()} method)
+     */
     public UnsupportedCommOperationException(Throwable cause) {
         super(cause);
+    }
+
+    /**
+     * Constructs a new UnsupportedCommOperationException with the specified detail message and cause.
+     *
+     * @param message the detail message
+     * @param cause the cause (which is saved for later retrieval by the {@link #getCause()} method)
+     */
+    public UnsupportedCommOperationException(String message, Throwable cause) {
+        super(message, cause);
     }
 }

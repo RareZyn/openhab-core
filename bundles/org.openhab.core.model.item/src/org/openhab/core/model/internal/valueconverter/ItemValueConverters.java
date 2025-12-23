@@ -21,6 +21,7 @@ import com.google.inject.Inject;
 
 /**
  * Registers {@link IValueConverter}s for the items language.
+ * Provides value converters for parsing and serializing item model values.
  *
  * @author Simon Kaufmann - Initial contribution
  */
@@ -29,6 +30,11 @@ public class ItemValueConverters extends DefaultTerminalConverters {
     @Inject
     private ValueTypeToStringConverter valueTypeToStringConverter;
 
+    /**
+     * Returns the value converter for ValueType rules.
+     *
+     * @return the ValueTypeToStringConverter instance
+     */
     @ValueConverter(rule = "ValueType")
     public IValueConverter<Object> ValueType() {
         return valueTypeToStringConverter;

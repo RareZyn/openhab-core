@@ -37,8 +37,10 @@ public interface WebSocketAdapter {
      * Creates a websocket instance.
      * It should use the {@code org.eclipse.jetty.websocket.api.annotations} or implement
      * {@link org.eclipse.jetty.websocket.api.WebSocketListener}.
-     * 
-     * @return a websocket instance.
+     *
+     * @param servletUpgradeRequest the servlet upgrade request, must not be null
+     * @param servletUpgradeResponse the servlet upgrade response, must not be null
+     * @return a websocket instance, may be null if the connection should be rejected
      */
     Object createWebSocket(ServletUpgradeRequest servletUpgradeRequest, ServletUpgradeResponse servletUpgradeResponse);
 }

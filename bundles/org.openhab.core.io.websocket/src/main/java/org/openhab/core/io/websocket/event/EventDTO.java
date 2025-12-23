@@ -32,9 +32,21 @@ public class EventDTO {
 
     public @Nullable String eventId;
 
+    /**
+     * Default constructor for deserialization.
+     */
     public EventDTO() {
     }
 
+    /**
+     * Constructs a new EventDTO with the specified values.
+     *
+     * @param type the event type, must not be null
+     * @param topic the event topic, must not be null
+     * @param payload the event payload, may be null
+     * @param source the event source, may be null
+     * @param eventId the event ID, may be null
+     */
     public EventDTO(String type, String topic, @Nullable String payload, @Nullable String source,
             @Nullable String eventId) {
         this.type = type;
@@ -44,7 +56,15 @@ public class EventDTO {
         this.eventId = eventId;
     }
 
+    /**
+     * Constructs a new EventDTO from an Event object.
+     *
+     * @param event the event to convert, must not be null
+     */
     public EventDTO(Event event) {
+        if (event == null) {
+            throw new IllegalArgumentException("Event cannot be null");
+        }
         type = event.getType();
         topic = event.getTopic();
         source = event.getSource();

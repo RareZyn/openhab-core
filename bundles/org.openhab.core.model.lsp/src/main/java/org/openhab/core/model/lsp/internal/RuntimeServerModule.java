@@ -37,6 +37,8 @@ import com.google.inject.AbstractModule;
 
 /**
  * This class configures the injector for the Language Server.
+ * It binds all necessary services and providers required for the Xtext Language Server
+ * to function properly, including URI extensions, request management, and resource service providers.
  *
  * @author Simon Kaufmann - Initial contribution
  */
@@ -46,11 +48,28 @@ public class RuntimeServerModule extends AbstractModule {
     private final ScriptServiceUtil scriptServiceUtil;
     private final ScriptEngine scriptEngine;
 
+    /**
+     * Constructs a new RuntimeServerModule with the specified dependencies.
+     *
+     * @param scriptServiceUtil the ScriptServiceUtil for script operations, must not be null
+     * @param scriptEngine the ScriptEngine for script execution, must not be null
+     */
     public RuntimeServerModule(ScriptServiceUtil scriptServiceUtil, ScriptEngine scriptEngine) {
+        if (scriptServiceUtil == null) {
+            throw new IllegalArgumentException("ScriptServiceUtil cannot be null");
+        }
+        if (scriptEngine == null) {
+            throw new IllegalArgumentException("ScriptEngine cannot be null");
+        }
         this.scriptServiceUtil = scriptServiceUtil;
         this.scriptEngine = scriptEngine;
     }
 
+    /**
+     * Configures the Guice injector bindings for the Language Server.
+     * Binds all necessary services including executor service, URI extensions,
+     * request manager, language server implementation, and resource service provider registry.
+     */
     @Override
     protected void configure() {
         binder().bind(ExecutorService.class).toProvider(ExecutorServiceProvider.class);

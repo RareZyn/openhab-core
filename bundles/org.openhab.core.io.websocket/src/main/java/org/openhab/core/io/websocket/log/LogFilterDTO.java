@@ -14,15 +14,24 @@ package org.openhab.core.io.websocket.log;
 
 import java.util.List;
 
+import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
+
 /**
- * The {@link LogFilterDTO} is used for serialization and deserialization of log filters
+ * The {@link LogFilterDTO} is used for serialization and deserialization of log filters.
+ * Represents filter criteria for querying log messages by time range, logger names, and sequence numbers.
  *
  * @author Chris Jackson - Initial contribution
  */
+@NonNullByDefault
 public class LogFilterDTO {
 
-    public Long timeStart;
-    public Long timeStop;
-    public List<String> loggerNames;
-    public Long sequenceStart;
+    /** Start time for filtering logs (Unix timestamp in milliseconds), may be null */
+    public @Nullable Long timeStart;
+    /** Stop time for filtering logs (Unix timestamp in milliseconds), may be null */
+    public @Nullable Long timeStop;
+    /** List of logger names to filter by, may be null */
+    public @Nullable List<String> loggerNames;
+    /** Starting sequence number for filtering logs, may be null */
+    public @Nullable Long sequenceStart;
 }

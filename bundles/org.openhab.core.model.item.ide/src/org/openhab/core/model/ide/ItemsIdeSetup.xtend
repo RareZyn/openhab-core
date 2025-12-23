@@ -22,9 +22,20 @@ import org.eclipse.xtext.util.Modules2
 
 /**
  * Initialization support for running Xtext languages as language servers.
+ * This class sets up the dependency injection for the Items IDE module,
+ * combining the runtime module with IDE-specific functionality.
+ * 
+ * Used by Xtext to provide IDE features like syntax highlighting, content assist,
+ * and validation for the Items DSL in development environments.
  */
 class ItemsIdeSetup extends ItemsStandaloneSetup {
 
+	/**
+	 * Creates a Guice injector that combines the runtime module with the IDE module.
+	 * This allows IDE-specific services to be injected alongside runtime services.
+	 *
+	 * @return the configured Guice injector
+	 */
 	override createInjector() {
 		Guice.createInjector(Modules2.mixin(new ItemsRuntimeModule, new ItemsIdeModule))
 	}

@@ -31,25 +31,52 @@ public class KarafAddonFinderService implements AddonFinderService {
     private final FeatureInstaller featureInstaller;
     private boolean deactivated;
 
+    /**
+     * Constructs a new KarafAddonFinderService with the specified FeatureInstaller.
+     *
+     * @param featureInstaller the FeatureInstaller to use for add-on operations, must not be null
+     */
     @Activate
     public KarafAddonFinderService(final @Reference FeatureInstaller featureInstaller) {
+        if (featureInstaller == null) {
+            throw new IllegalArgumentException("FeatureInstaller cannot be null");
+        }
         this.featureInstaller = featureInstaller;
     }
 
+    /**
+     * Deactivates the service, preventing further add-on operations.
+     */
     @Deactivate
     protected void deactivate() {
         deactivated = true;
     }
 
+    /**
+     * Installs an add-on finder with the specified ID.
+     *
+     * @param id the add-on finder ID to install, must not be null or empty
+     */
     @Override
     public void install(String id) {
+        if (id == null || id.isEmpty()) {
+            return;
+        }
         if (!deactivated) {
             featureInstaller.addAddon(FeatureInstaller.FINDER_ADDON_TYPE, id);
         }
     }
 
+    /**
+     * Uninstalls an add-on finder with the specified ID.
+     *
+     * @param id the add-on finder ID to uninstall, must not be null or empty
+     */
     @Override
     public void uninstall(String id) {
+        if (id == null || id.isEmpty()) {
+            return;
+        }
         if (!deactivated) {
             featureInstaller.removeAddon(FeatureInstaller.FINDER_ADDON_TYPE, id);
         }

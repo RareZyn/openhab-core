@@ -16,8 +16,9 @@ import java.net.URL;
 import java.util.Map;
 
 /**
- * The {@link UpnpIOService} is an interface that described the
- * UPNP IO Service.
+ * The {@link UpnpIOService} is an interface that describes the
+ * UPnP IO Service for interacting with UPnP devices.
+ * Provides methods for invoking actions, managing subscriptions, and polling device status.
  *
  * @author Karel Goderis - Initial contribution
  * @author Kai Kreuzer - added descriptor url retrieval
@@ -25,91 +26,93 @@ import java.util.Map;
 public interface UpnpIOService {
 
     /**
-     * Invoke an UPNP Action using the device default namespace and serviceID
-     * 
-     * @param participant the participant to invoke the action for
-     * @param serviceID the UPNP service to invoke the action upon
-     * @param actionID the Action to invoke
-     * @param inputs a map of {variable,values} to parameterize the Action that will be invoked
+     * Invoke a UPnP Action using the device default namespace and serviceID.
+     *
+     * @param participant the participant to invoke the action for, must not be null
+     * @param serviceID the UPnP service to invoke the action upon, must not be null
+     * @param actionID the Action to invoke, must not be null
+     * @param inputs a map of {variable,values} to parameterize the Action that will be invoked, may be null
+     * @return a map of output variable names to their values, or an empty map if the action fails
      */
     Map<String, String> invokeAction(UpnpIOParticipant participant, String serviceID, String actionID,
             Map<String, String> inputs);
 
     /**
-     * Invoke an UPNP Action using the specified namespace and serviceID
-     * 
-     * @param participant the participant to invoke the action for
-     * @param namespace the namespace of the service to invoke the action upon
-     * @param serviceID the UPNP service to invoke the action upon
-     * @param actionID the Action to invoke
-     * @param inputs a map of {variable,values} to parameterize the Action that will be invoked
+     * Invoke a UPnP Action using the specified namespace and serviceID.
+     *
+     * @param participant the participant to invoke the action for, must not be null
+     * @param namespace the namespace of the service to invoke the action upon, may be null to use device default
+     * @param serviceID the UPnP service to invoke the action upon, must not be null
+     * @param actionID the Action to invoke, must not be null
+     * @param inputs a map of {variable,values} to parameterize the Action that will be invoked, may be null
+     * @return a map of output variable names to their values, or an empty map if the action fails
      */
     Map<String, String> invokeAction(UpnpIOParticipant participant, String namespace, String serviceID, String actionID,
             Map<String, String> inputs);
 
     /**
-     * Subscribe to a GENA subscription
-     * 
-     * @param participant the participant to the subscription is for
-     * @param serviceID the UPNP service we want to subscribe to
-     * @param duration the duration of the subscription
+     * Subscribe to a GENA (Generic Event Notification Architecture) subscription.
+     *
+     * @param participant the participant the subscription is for, must not be null
+     * @param serviceID the UPnP service to subscribe to, must not be null
+     * @param duration the duration of the subscription in seconds, must be positive
      */
     void addSubscription(UpnpIOParticipant participant, String serviceID, int duration);
 
     /**
-     * Unsubscribe from a GENA subscription
-     * 
-     * @param participant the participant of the subscription
-     * @param serviceID the UPNP service we want to unsubscribe from
+     * Unsubscribe from a GENA (Generic Event Notification Architecture) subscription.
+     *
+     * @param participant the participant of the subscription, must not be null
+     * @param serviceID the UPnP service to unsubscribe from, must not be null
      */
     void removeSubscription(UpnpIOParticipant participant, String serviceID);
 
     /**
-     * Verify if the a participant is registered
-     * 
-     * @param participant the participant whom's participation we want to verify
-     * @return true of the participant is registered with the UpnpIOService
+     * Verify if a participant is registered with the UPnP IO Service.
+     *
+     * @param participant the participant whose registration status to verify, must not be null
+     * @return true if the participant is registered with the UpnpIOService, false otherwise
      */
     boolean isRegistered(UpnpIOParticipant participant);
 
     /**
-     * Register a participant with the UPNP IO Service
-     * 
-     * @param participant the participant whose participation we want to register
+     * Register a participant with the UPnP IO Service.
+     *
+     * @param participant the participant to register, must not be null
      */
     void registerParticipant(UpnpIOParticipant participant);
 
     /**
-     * Unregister a participant with the UPNP IO Service
-     * 
-     * @param participant the participant whose participation we want to unregister
+     * Unregister a participant from the UPnP IO Service.
+     *
+     * @param participant the participant to unregister, must not be null
      */
     void unregisterParticipant(UpnpIOParticipant participant);
 
     /**
-     * Retrieves the descriptor url for the participant
-     * 
-     * @param participant the participant whom's descriptor url is requested
-     * @return the url of the descriptor as provided by the upnp device
+     * Retrieves the descriptor URL for the participant's UPnP device.
+     *
+     * @param participant the participant whose descriptor URL is requested, must not be null
+     * @return the URL of the device descriptor as provided by the UPnP device, or null if not available
      */
     URL getDescriptorURL(UpnpIOParticipant participant);
 
     /**
-     * Establish a polling mechanism to check the status of a specific UDN device. The polling mechanism
-     * works by invoking the actionID on serviceID every interval. It is assumed that the actionID does
-     * not take/have to take any {variable,value} input set
-     * 
-     * @param participant the participant for whom we want to set up a polling
-     * @param serviceID the service to use for polling
-     * @param actionID the action to call
-     * @param interval the interval in seconds
+     * Establish a polling mechanism to check the status of a specific UDN device.
+     * The polling mechanism works by invoking the actionID on serviceID every interval.
+     * It is assumed that the actionID does not take/have to take any {variable,value} input set.
+     *
+     * @param participant the participant for whom to set up polling, must not be null
+     * @param serviceID the service to use for polling, must not be null
+     * @param actionID the action to call, must not be null
+     * @param interval the polling interval in seconds (0 uses default interval), must be non-negative
      */
     void addStatusListener(UpnpIOParticipant participant, String serviceID, String actionID, int interval);
 
     /**
-     * Stops the polling mechanism to check the status of a specific UDN device.
-     * 
-     * @param participant the participant for whom we want to remove the polling
+     * Stops the polling mechanism for checking the status of a specific UDN device.
+     *
+     * @param participant the participant for whom to remove the polling, must not be null
      */
     void removeStatusListener(UpnpIOParticipant participant);
 }

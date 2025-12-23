@@ -27,6 +27,9 @@ import gnu.io.CommPortIdentifier;
 import gnu.io.NoSuchPortException;
 
 /**
+ * Utility class for working with RXTX serial ports.
+ * Provides methods for getting port identifiers using scanning or system properties.
+ * Handles Linux-specific serial port registration and system property management.
  *
  * @author Matthias Steigenberger - Initial contribution
  * @author Wouter Born - Fix serial ports missing when ports are added to system property
@@ -40,7 +43,19 @@ public class SerialPortUtil {
         return System.getProperties().containsKey(GNU_IO_RXTX_SERIAL_PORTS);
     }
 
+    /**
+     * Gets a port identifier for the specified port name.
+     * On Linux systems, automatically registers the port in the system property if needed.
+     *
+     * @param port the port name, must not be null or empty
+     * @return the port identifier
+     * @throws NoSuchPortException if the port does not exist
+     * @throws IllegalArgumentException if port is null or empty
+     */
     public static synchronized CommPortIdentifier getPortIdentifier(String port) throws NoSuchPortException {
+        if (port == null || port.isEmpty()) {
+            throw new IllegalArgumentException("Port name cannot be null or empty");
+        }
         if ((System.getProperty("os.name").toLowerCase().indexOf("linux") != -1)) {
             appendSerialPortProperty(port);
         }

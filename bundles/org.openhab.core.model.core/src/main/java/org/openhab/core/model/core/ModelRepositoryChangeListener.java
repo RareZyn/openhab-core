@@ -15,6 +15,8 @@ package org.openhab.core.model.core;
 import org.eclipse.jdt.annotation.NonNullByDefault;
 
 /**
+ * Interface for listeners that are notified when models in the repository change.
+ * Implementations can react to model additions, modifications, and removals.
  *
  * @author Kai Kreuzer - Initial contribution
  */
@@ -22,8 +24,12 @@ import org.eclipse.jdt.annotation.NonNullByDefault;
 public interface ModelRepositoryChangeListener {
 
     /**
+     * Called when a model in the repository has changed.
      * Performs dispatch of all binding configs and
      * fires all {@link org.openhab.core.items.ItemRegistryChangeListener}s if {@code modelName} ends with "items".
+     *
+     * @param modelName the name of the model that changed, must not be null
+     * @param type the type of change event (ADDED, MODIFIED, or REMOVED), must not be null
      */
     void modelChanged(String modelName, EventType type);
 }
