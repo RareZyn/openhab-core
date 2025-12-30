@@ -44,7 +44,13 @@ public class SynthesizeActionHandler extends BaseActionModuleHandler {
         super(module);
         this.audioManager = audioManager;
 
-        this.melody = module.getConfiguration().get(PARAM_MELODY).toString();
+        // Validate required configuration parameter
+        Object melodyParam = module.getConfiguration().get(PARAM_MELODY);
+        if (melodyParam == null) {
+            throw new IllegalArgumentException("Configuration parameter '" + PARAM_MELODY
+                    + "' is required for SynthesizeAction but was not provided");
+        }
+        this.melody = melodyParam.toString();
 
         Object sinkParam = module.getConfiguration().get(PARAM_SINK);
         this.sink = sinkParam != null ? sinkParam.toString() : null;

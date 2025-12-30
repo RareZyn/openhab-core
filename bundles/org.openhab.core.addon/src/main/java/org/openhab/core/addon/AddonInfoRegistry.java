@@ -81,51 +81,81 @@ public class AddonInfoRegistry {
     /**
      * A {@link BinaryOperator} to merge the field values from two {@link AddonInfo} objects into a third such object.
      * <p>
-     * If the first object has a non-null field value the result object takes the first value, or if the second object
-     * has a non-null field value the result object takes the second value. Otherwise the field remains null.
+     * This merge strategy enables multiple providers to contribute complementary information about the same add-on.
+     * The merge follows these precedence rules:
+     * <ol>
+     * <li><b>Scalar fields:</b> Non-blank/non-null values from 'a' take precedence over 'b', except for default
+     * values</li>
+     * <li><b>Collection fields:</b> Union of both collections (countries, discoveryMethods)</li>
+     * <li><b>Default value override:</b> If 'a' contains a default-generated value and 'b' has a custom value,
+     * 'b' takes precedence</li>
+     * </ol>
+     * <p>
+     * Example: If provider A sets description="Custom description" and provider B sets description="", the result
+     * will use "Custom description" from A.
      *
-     * @param a the first {@link AddonInfo} (could be null)
-     * @param b the second {@link AddonInfo} (could be null)
+     * @param a the first {@link AddonInfo} (higher priority, could be null)
+     * @param b the second {@link AddonInfo} (lower priority, could be null)
      * @return a new {@link AddonInfo} containing the combined field values (could be null)
      */
     private static BinaryOperator<@Nullable AddonInfo> mergeAddonInfos = (a, b) -> {
+        // Handle null cases - return the non-null object
         if (a == null) {
             return b;
         } else if (b == null) {
             return a;
         }
+
+        // Start with all fields from 'a' as the base
         AddonInfo.Builder builder = AddonInfo.builder(a);
+
+        // Merge description: prefer non-blank description from 'a', fallback to 'b'
         if (a.getDescription().isBlank()) {
             builder.withDescription(b.getDescription());
         }
+
+        // Merge connection: prefer non-null value from 'a', fallback to 'b'
         if (a.getConnection() == null && b.getConnection() != null) {
             builder.withConnection(b.getConnection());
         }
+
+        // Merge countries: union of both sets (no duplicates)
         Set<String> countries = new HashSet<>(a.getCountries());
         countries.addAll(b.getCountries());
         if (!countries.isEmpty()) {
             builder.withCountries(countries.stream().toList());
         }
+
+        // Merge configDescriptionURI: prefer non-null/non-empty from 'a', fallback to 'b'
         String aConfigDescriptionURI = a.getConfigDescriptionURI();
         if (aConfigDescriptionURI == null || aConfigDescriptionURI.isEmpty() && b.getConfigDescriptionURI() != null) {
             builder.withConfigDescriptionURI(b.getConfigDescriptionURI());
         }
+
+        // Merge sourceBundle: prefer non-null value from 'a', fallback to 'b'
         if (a.getSourceBundle() == null && b.getSourceBundle() != null) {
             builder.withSourceBundle(b.getSourceBundle());
         }
+
+        // Merge serviceId: if 'a' has default value but 'b' has custom value, prefer 'b'
         String defaultServiceId = a.getType() + "." + a.getId();
         if (defaultServiceId.equals(a.getServiceId()) && !defaultServiceId.equals(b.getServiceId())) {
             builder.withServiceId(b.getServiceId());
         }
+
+        // Merge UID: if 'a' has default value but 'b' has custom value, prefer 'b'
         String defaultUID = a.getType() + Addon.ADDON_SEPARATOR + a.getId();
         if (defaultUID.equals(a.getUID()) && !defaultUID.equals(b.getUID())) {
             builder.withUID(b.getUID());
         }
+
+        // Merge discoveryMethods: union of both sets (no duplicates)
         Set<AddonDiscoveryMethod> discoveryMethods = new HashSet<>(a.getDiscoveryMethods());
         discoveryMethods.addAll(b.getDiscoveryMethods());
         if (!discoveryMethods.isEmpty()) {
             builder.withDiscoveryMethods(discoveryMethods.stream().toList());
         }
+
         return builder.build();
     };
 

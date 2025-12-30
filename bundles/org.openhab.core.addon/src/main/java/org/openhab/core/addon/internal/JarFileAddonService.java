@@ -92,6 +92,13 @@ public class JarFileAddonService extends BundleTracker<Bundle> implements AddonS
 
     /**
      * Checks if a bundle is loaded from a file and add-on information is available
+     * <p>
+     * A bundle is considered relevant if:
+     * <ul>
+     * <li>It's loaded from a file location (not embedded or from other sources)</li>
+     * <li>It contains an addon descriptor at OH-INF/addon/addon.xml</li>
+     * </ul>
+     * This filters out bundles installed via other mechanisms (marketplace, eclipse, etc.)
      *
      * @param bundle the bundle to check
      * @return <code>true</code> if bundle is considered, <code>false</code> otherwise
@@ -138,8 +145,21 @@ public class JarFileAddonService extends BundleTracker<Bundle> implements AddonS
         return SERVICE_NAME;
     }
 
+    /**
+     * Refreshes the internal addon cache by re-scanning all tracked bundles.
+     * <p>
+     * This method rebuilds the entire addon map from scratch by:
+     * <ol>
+     * <li>Iterating through all currently tracked bundles</li>
+     * <li>Converting each bundle to an Addon (if addon info is available)</li>
+     * <li>Filtering out bundles without addon information</li>
+     * <li>Creating a new map indexed by addon UID</li>
+     * </ol>
+     * Note: This is called asynchronously on the scheduler to avoid blocking bundle events.
+     */
     @Override
     public synchronized void refreshSource() {
+        // Rebuild the addon map from all tracked bundles
         addons = trackedBundles.stream().map(this::toAddon).filter(Objects::nonNull).map(Objects::requireNonNull)
                 .collect(Collectors.toMap(Addon::getUid, addon -> addon));
     }
@@ -179,18 +199,47 @@ public class JarFileAddonService extends BundleTracker<Bundle> implements AddonS
         return List.copyOf(ADDON_TYPE_MAP.values());
     }
 
+    /**
+     * Installation of addons is not supported by this service.
+     * <p>
+     * Jar file addons are expected to be manually placed in the addons folder.
+     * Use the marketplace addon service for automated installation.
+     *
+     * @param id the id of the add-on to install
+     * @throws UnsupportedOperationException always, as this operation is not supported
+     */
     @Override
     public void install(String id) {
-        throw new UnsupportedOperationException();
+        throw new UnsupportedOperationException("Jar file addon installation is not supported. "
+                + "Please place addon JAR files manually in the addons folder.");
     }
 
+    /**
+     * Uninstallation of addons is not supported by this service.
+     * <p>
+     * Jar file addons must be manually removed from the addons folder.
+     * Use the marketplace addon service for automated uninstallation.
+     *
+     * @param id the id of the add-on to uninstall
+     * @throws UnsupportedOperationException always, as this operation is not supported
+     */
     @Override
     public void uninstall(String id) {
-        throw new UnsupportedOperationException();
+        throw new UnsupportedOperationException("Jar file addon uninstallation is not supported. "
+                + "Please remove addon JAR files manually from the addons folder.");
     }
 
+    /**
+     * Addon ID extraction from URI is not supported by this service.
+     * <p>
+     * This service only handles file-based addons which don't use URI-based identification.
+     *
+     * @param addonURI the URI from which to parse the add-on Id
+     * @return always null, as this service doesn't support URI-based addon identification
+     */
     @Override
     public @Nullable String getAddonId(URI addonURI) {
+        // File-based addons don't use URI-based identification
         return null;
     }
 }

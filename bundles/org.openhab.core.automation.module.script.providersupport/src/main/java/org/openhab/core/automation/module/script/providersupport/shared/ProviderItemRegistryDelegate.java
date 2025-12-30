@@ -184,11 +184,42 @@ public class ProviderItemRegistryDelegate implements ItemRegistry, ProviderRegis
         items.clear();
     }
 
+    /**
+     * Recursively collects names of all items that are members of the specified group, including nested groups.
+     * <p>
+     * This method performs a depth-first traversal of the group hierarchy:
+     * <ol>
+     * <li>Scans all items to find direct members of the specified group</li>
+     * <li>For each member that is itself a GroupItem, recursively collects its members</li>
+     * <li>Returns the flattened list of all member names (direct and transitive)</li>
+     * </ol>
+     * <p>
+     * <b>Example:</b>
+     *
+     * <pre>
+     * Group:Number:AVG gTemperature
+     * Group gLivingRoom (gTemperature)
+     * Number Temperature_LivingRoom (gLivingRoom)
+     * Number Temperature_Kitchen (gTemperature)
+     *
+     * getMemberNamesRecursively(gTemperature) returns:
+     * ["gLivingRoom", "Temperature_LivingRoom", "Temperature_Kitchen"]
+     * </pre>
+     * <p>
+     * <b>Performance Note:</b> This method performs an O(n) scan of all items for each group level. For deeply
+     * nested groups, consider caching the group hierarchy if performance becomes an issue.
+     *
+     * @param groupItem the group whose members should be collected
+     * @param allItems all items in the registry (used for scanning)
+     * @return list of all member item names (direct and nested)
+     */
     private List<String> getMemberNamesRecursively(GroupItem groupItem, Collection<Item> allItems) {
         List<String> memberNames = new ArrayList<>();
         for (Item item : allItems) {
+            // Check if this item is a member of the specified group
             if (item.getGroupNames().contains(groupItem.getName())) {
                 memberNames.add(item.getName());
+                // If this member is itself a group, recursively collect its members
                 if (item instanceof GroupItem groupItem1) {
                     memberNames.addAll(getMemberNamesRecursively(groupItem1, allItems));
                 }

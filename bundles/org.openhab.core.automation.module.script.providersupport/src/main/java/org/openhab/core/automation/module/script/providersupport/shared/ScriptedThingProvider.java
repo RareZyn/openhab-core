@@ -13,9 +13,9 @@
 package org.openhab.core.automation.module.script.providersupport.shared;
 
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -35,6 +35,8 @@ import org.slf4j.LoggerFactory;
 /**
  * This {@link ThingProvider} keeps things provided by scripts during runtime.
  * This ensures that things are not kept on reboot, but have to be provided by the scripts again.
+ * <p>
+ * <b>Thread Safety:</b> This provider is thread-safe and supports concurrent access from multiple scripts.
  *
  * @author Florian Hotze - Initial contribution
  */
@@ -43,7 +45,12 @@ import org.slf4j.LoggerFactory;
 public class ScriptedThingProvider extends AbstractProvider<Thing>
         implements ThingProvider, ManagedProvider<Thing, ThingUID>, EventSubscriber {
     private final Logger logger = LoggerFactory.getLogger(ScriptedThingProvider.class);
-    private final Map<ThingUID, Thing> things = new HashMap<>();
+
+    /**
+     * Thread-safe storage for script-provided things.
+     * Uses ConcurrentHashMap to allow safe concurrent access from multiple scripts.
+     */
+    private final Map<ThingUID, Thing> things = new ConcurrentHashMap<>();
 
     @Override
     public Collection<Thing> getAll() {

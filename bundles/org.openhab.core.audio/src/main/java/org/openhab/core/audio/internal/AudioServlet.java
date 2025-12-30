@@ -78,10 +78,34 @@ public class AudioServlet extends HttpServlet implements AudioHTTPServer {
 
     private static final List<String> WAV_MIME_TYPES = List.of("audio/wav", "audio/x-wav", "audio/vnd.wave");
 
-    // A 1MB in memory buffer will help playing multiple times an AudioStream, if the sink cannot do otherwise
+    /**
+     * Maximum size (1 MB) for in-memory buffering of one-time audio streams.
+     * Streams smaller than this will be buffered in memory for better performance.
+     */
     private static final int ONETIME_STREAM_BUFFER_MAX_SIZE = 1048576;
-    // 5MB max for a file buffer
+
+    /**
+     * Maximum size (5 MB) for file-based buffering of one-time audio streams.
+     * Streams larger than ONETIME_STREAM_BUFFER_MAX_SIZE but smaller than this
+     * will be buffered to a temporary file.
+     */
     private static final int ONETIME_STREAM_FILE_MAX_SIZE = 5242880;
+
+    /**
+     * Default timeout (10 seconds) for one-time streams that are never played.
+     * This prevents resource leaks for streams that are served but never consumed.
+     */
+    private static final int DEFAULT_ONETIME_STREAM_TIMEOUT_SECONDS = 10;
+
+    /**
+     * Interval (2 seconds) for periodic cleanup of expired streams.
+     */
+    private static final int STREAM_CLEANUP_INTERVAL_SECONDS = 2;
+
+    /**
+     * Buffer size (8192 bytes) for copying stream data to temporary files.
+     */
+    private static final int FILE_COPY_BUFFER_SIZE = 8192;
 
     static final String SERVLET_PATH = "/audio";
 
@@ -238,8 +262,8 @@ public class AudioServlet extends HttpServlet implements AudioHTTPServer {
         if (!servedStreams.isEmpty()) {
             if (periodicCleanerLocal == null || periodicCleanerLocal.isDone()) {
                 // reschedule a clean
-                periodicCleaner = threadPool.scheduleWithFixedDelay(this::removeTimedOutStreams, 2, 2,
-                        TimeUnit.SECONDS);
+                periodicCleaner = threadPool.scheduleWithFixedDelay(this::removeTimedOutStreams,
+                        STREAM_CLEANUP_INTERVAL_SECONDS, STREAM_CLEANUP_INTERVAL_SECONDS, TimeUnit.SECONDS);
             }
         } else if (periodicCleanerLocal != null) { // no more stream to serve, shut the periodic cleaning thread:
             periodicCleanerLocal.cancel(true);
@@ -252,7 +276,7 @@ public class AudioServlet extends HttpServlet implements AudioHTTPServer {
         try {
             // In case the stream is never played, we cannot wait indefinitely before executing the callback.
             // so we set a timeout (even if this is a one time stream).
-            return serve(stream, 10, false).url();
+            return serve(stream, DEFAULT_ONETIME_STREAM_TIMEOUT_SECONDS, false).url();
         } catch (IOException e) {
             logger.warn("Cannot precache the audio stream to serve it", e);
             return getRelativeURL("error");
@@ -304,7 +328,7 @@ public class AudioServlet extends HttpServlet implements AudioHTTPServer {
                 // copy already read data to file :
                 outputStream.write(dataBytes);
                 // copy the remaining stream data to a file.
-                byte[] buf = new byte[8192];
+                byte[] buf = new byte[FILE_COPY_BUFFER_SIZE];
                 int length;
                 // but with a limit
                 int fileSize = ONETIME_STREAM_BUFFER_MAX_SIZE + 1;

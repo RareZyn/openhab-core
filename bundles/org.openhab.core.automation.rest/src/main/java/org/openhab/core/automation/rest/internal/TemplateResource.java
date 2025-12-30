@@ -53,7 +53,26 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * This class acts as a REST resource for templates and is registered with the Jersey servlet.
+ * REST resource for managing rule templates in openHAB.
+ *
+ * <p>
+ * Rule templates are predefined automation patterns that users can instantiate
+ * with custom configuration values. Templates provide:
+ * <ul>
+ * <li>Reusable rule structures with configurable parameters</li>
+ * <li>Simplified rule creation for common use cases</li>
+ * <li>Consistent automation patterns across the system</li>
+ * </ul>
+ * </p>
+ *
+ * <p>
+ * Templates define the structure (triggers, conditions, actions) and expose
+ * configuration parameters that users fill in when creating rules from the template.
+ * </p>
+ *
+ * <p>
+ * All endpoints support localization via the Accept-Language header.
+ * </p>
  *
  * @author Kai Kreuzer - Initial contribution
  * @author Markus Rathgeb - Migrated to JAX-RS Whiteboard Specification

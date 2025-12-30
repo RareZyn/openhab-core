@@ -50,8 +50,12 @@ public final class Activator implements BundleActivator {
         }
     }
 
+    /**
+     * Stops the bundle. No cleanup is required as all resources are managed by OSGi Declarative Services
+     * and will be automatically deactivated by the framework.
+     */
     @Override
     public void stop(@Nullable BundleContext context) throws Exception {
-        // do nothing
+        // No cleanup needed - OSGi DS components handle their own lifecycle
     }
 }

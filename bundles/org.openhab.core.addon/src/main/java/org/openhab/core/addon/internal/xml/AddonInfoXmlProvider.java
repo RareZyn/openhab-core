@@ -60,8 +60,18 @@ public class AddonInfoXmlProvider implements XmlDocumentProvider<AddonInfoXmlRes
         if (configDescription != null) {
             try {
                 configDescriptionProvider.add(bundle, configDescription);
+            } catch (IllegalArgumentException ex) {
+                // Invalid configuration description (e.g., duplicate URI, invalid parameter definition)
+                logger.warn("Invalid configuration description for bundle {}: {}", bundle.getSymbolicName(),
+                        ex.getMessage());
+            } catch (IllegalStateException ex) {
+                // Provider not ready or bundle context invalid
+                logger.error("Configuration provider not ready for bundle {}: {}", bundle.getSymbolicName(),
+                        ex.getMessage(), ex);
             } catch (Exception ex) {
-                logger.error("Could not register ConfigDescription!", ex);
+                // Catch-all for unexpected errors
+                logger.error("Unexpected error registering configuration description for bundle {}: {}",
+                        bundle.getSymbolicName(), ex.getMessage(), ex);
             }
         }
 

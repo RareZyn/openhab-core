@@ -37,26 +37,57 @@ import org.openhab.core.automation.util.ActionBuilder;
 import org.openhab.core.automation.util.ModuleBuilder;
 import org.openhab.core.automation.util.RuleBuilder;
 import org.openhab.core.config.core.Configuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This Registry is used for a single ScriptEngine instance. It allows the adding and removing of handlers.
  * It allows the removal of previously added modules on unload.
+ *
+ * <p>
+ * The ScriptedAutomationManager serves as the central management point for script-defined automation components
+ * including custom module types (Actions, Conditions, Triggers), their handlers, and rules. Each script execution
+ * context has its own instance of this manager to isolate script-defined components.
+ * </p>
+ *
+ * <p>
+ * Key responsibilities:
+ * </p>
+ * <ul>
+ * <li>Register and unregister custom module types (ActionType, ConditionType, TriggerType)</li>
+ * <li>Manage handlers for custom modules (public and private handlers)</li>
+ * <li>Add and track rules created by scripts</li>
+ * <li>Clean up all script-created components when script is unloaded</li>
+ * </ul>
  *
  * @author Simon Merschjohann - Initial contribution
  */
 @NonNullByDefault
 public class ScriptedAutomationManager {
 
+    private final Logger logger = LoggerFactory.getLogger(ScriptedAutomationManager.class);
+
     private final RuleSupportRuleRegistryDelegate ruleRegistryDelegate;
 
+    // Track all module types registered by this script
     private final Set<String> modules = new HashSet<>();
+    // Track all public module handlers registered by this script
     private final Set<String> moduleHandlers = new HashSet<>();
+    // Track all private handlers registered by this script
     private final Set<String> privateHandlers = new HashSet<>();
 
     private final ScriptedCustomModuleHandlerFactory scriptedCustomModuleHandlerFactory;
     private final ScriptedCustomModuleTypeProvider scriptedCustomModuleTypeProvider;
     private final ScriptedPrivateModuleHandlerFactory scriptedPrivateModuleHandlerFactory;
 
+    /**
+     * Creates a new ScriptedAutomationManager for managing script-defined automation components.
+     *
+     * @param ruleRegistryDelegate delegate for managing rules in the rule registry
+     * @param scriptedCustomModuleHandlerFactory factory for managing public module handlers
+     * @param scriptedCustomModuleTypeProvider provider for managing custom module types
+     * @param scriptedPrivateModuleHandlerFactory factory for managing private (script-internal) handlers
+     */
     public ScriptedAutomationManager(RuleSupportRuleRegistryDelegate ruleRegistryDelegate,
             ScriptedCustomModuleHandlerFactory scriptedCustomModuleHandlerFactory,
             ScriptedCustomModuleTypeProvider scriptedCustomModuleTypeProvider,
@@ -86,7 +117,25 @@ public class ScriptedAutomationManager {
         }
     }
 
+    /**
+     * Removes all components registered by this script.
+     *
+     * <p>
+     * This method performs complete cleanup of all script-registered components in the following order:
+     * </p>
+     * <ol>
+     * <li>Remove all custom module types</li>
+     * <li>Remove all public module handlers</li>
+     * <li>Remove all private handlers</li>
+     * <li>Remove all rules added by the script</li>
+     * </ol>
+     *
+     * <p>
+     * This method is typically called when a script is unloaded or reloaded to ensure clean state.
+     * </p>
+     */
     public void removeAll() {
+        // Create defensive copies to avoid ConcurrentModificationException
         Set<String> types = new HashSet<>(modules);
         for (String moduleType : types) {
             removeModuleType(moduleType);
@@ -105,6 +154,17 @@ public class ScriptedAutomationManager {
         ruleRegistryDelegate.removeAllAddedByScript();
     }
 
+    /**
+     * Adds a rule to the rule registry and tracks it for cleanup.
+     *
+     * <p>
+     * This method processes the rule element, ensures all modules have proper IDs, and registers it with the rule
+     * registry. The rule will be automatically removed when {@link #removeAll()} is called.
+     * </p>
+     *
+     * @param element the rule to add (must have a unique UID)
+     * @return the processed and registered rule
+     */
     public Rule addRule(Rule element) {
         Rule rule = addUnmanagedRule(element);
 
@@ -129,6 +189,7 @@ public class ScriptedAutomationManager {
         // used for numbering the modules of the rule
         int moduleIndex = 1;
 
+        // Add conditions if present (conditions are optional in rules)
         try {
             List<Condition> conditions = new ArrayList<>();
             for (Condition cond : element.getConditions()) {
@@ -143,10 +204,19 @@ public class ScriptedAutomationManager {
             }
 
             builder.withConditions(conditions);
+        } catch (NullPointerException ex) {
+            // No conditions defined - this is valid, conditions are optional
+            logger.trace("Rule '{}' has no conditions (optional)", element.getUID());
+        } catch (IllegalArgumentException ex) {
+            // Invalid condition configuration
+            logger.warn("Invalid condition configuration in rule '{}': {}", element.getUID(), ex.getMessage());
         } catch (Exception ex) {
-            // conditions are optional
+            // Unexpected error while processing conditions
+            logger.error("Unexpected error while adding conditions to rule '{}': {}", element.getUID(), ex.getMessage(),
+                    ex);
         }
 
+        // Add triggers if present (triggers are optional in rules, though typically required)
         try {
             List<Trigger> triggers = new ArrayList<>();
             for (Trigger trigger : element.getTriggers()) {
@@ -160,8 +230,16 @@ public class ScriptedAutomationManager {
             }
 
             builder.withTriggers(triggers);
+        } catch (NullPointerException ex) {
+            // No triggers defined - this may be valid for some rule types
+            logger.trace("Rule '{}' has no triggers (optional)", element.getUID());
+        } catch (IllegalArgumentException ex) {
+            // Invalid trigger configuration
+            logger.warn("Invalid trigger configuration in rule '{}': {}", element.getUID(), ex.getMessage());
         } catch (Exception ex) {
-            // triggers are optional
+            // Unexpected error while processing triggers
+            logger.error("Unexpected error while adding triggers to rule '{}': {}", element.getUID(), ex.getMessage(),
+                    ex);
         }
 
         List<Action> actions = new ArrayList<>(element.getActions());

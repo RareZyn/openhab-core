@@ -43,6 +43,25 @@ import org.osgi.service.component.annotations.Reference;
  * This class dynamically provides the Play, Say and Synthesize action types.
  * This is necessary since there is no other way to provide dynamic config param options for module types.
  *
+ * <p>
+ * This provider generates automation module type definitions for media-related actions with dynamically populated
+ * configuration options based on the current system state (available sound files and audio sinks).
+ * </p>
+ *
+ * <h3>Provided Action Types:</h3>
+ * <ul>
+ * <li><b>media.PlayAction</b>: Plays a sound file from the sounds directory</li>
+ * <li><b>media.SayAction</b>: Speaks text using text-to-speech</li>
+ * <li><b>media.SynthesizeAction</b>: Plays a synthesized tone melody</li>
+ * </ul>
+ *
+ * <h3>Dynamic Configuration:</h3>
+ * <ul>
+ * <li>Sound file options are discovered by scanning the sounds directory at startup</li>
+ * <li>Audio sink options are retrieved from the AudioManager at runtime</li>
+ * <li>Volume parameter accepts integer values 0-100</li>
+ * </ul>
+ *
  * @author Kai Kreuzer - Initial contribution
  * @author Simon Kaufmann - added "say" action
  * @author Christoph Weitkamp - Added parameter volume
@@ -136,15 +155,19 @@ public class MediaActionTypeProvider implements ModuleTypeProvider {
         List<ParameterOption> options = new ArrayList<>();
         File soundsDir = Path.of(OpenHAB.getConfigFolder(), AudioManager.SOUND_DIR).toFile();
         if (soundsDir.isDirectory()) {
-            for (String fileName : soundsDir.list()) {
-                if (fileName.contains(".") && !fileName.startsWith(".")) {
-                    String soundName = fileName.substring(0, fileName.lastIndexOf("."));
-                    String capitalizedSoundName = soundName.substring(0, 1).toUpperCase()
-                            + soundName.substring(1).toLowerCase();
-                    options.add(new ParameterOption(fileName, capitalizedSoundName));
+            String[] fileNames = soundsDir.list();
+            // Check for null in case of I/O error or permission issues
+            if (fileNames != null) {
+                for (String fileName : fileNames) {
+                    if (fileName.contains(".") && !fileName.startsWith(".")) {
+                        String soundName = fileName.substring(0, fileName.lastIndexOf("."));
+                        String capitalizedSoundName = soundName.substring(0, 1).toUpperCase()
+                                + soundName.substring(1).toLowerCase();
+                        options.add(new ParameterOption(fileName, capitalizedSoundName));
+                    }
                 }
+                options.sort(comparing(ParameterOption::getLabel));
             }
-            options.sort(comparing(ParameterOption::getLabel));
         }
         return options;
     }

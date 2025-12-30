@@ -36,8 +36,31 @@ import org.openhab.core.automation.type.Output;
 import org.openhab.core.automation.type.TriggerType;
 
 /**
- * This class contains utility methods for comparison of data types between connected inputs and outputs of modules
- * participating in a rule.
+ * This class contains utility methods for validating connections between module inputs and outputs in automation rules.
+ * It ensures that data flows correctly between triggers, conditions, and actions by validating:
+ * <ul>
+ * <li>All required inputs are connected</li>
+ * <li>Data types are compatible between connected outputs and inputs</li>
+ * <li>Reference syntax is valid (configuration references, module outputs, property access)</li>
+ * </ul>
+ *
+ * <h3>Connection Types</h3>
+ * There are two types of connections:
+ * <ul>
+ * <li><b>Configuration Reference:</b> References to configuration values using ${configKey} or $configKey syntax</li>
+ * <li><b>Module Output Reference:</b> References to outputs from other modules using moduleId.outputName syntax</li>
+ * </ul>
+ *
+ * <h3>Reference Syntax Examples</h3>
+ * <ul>
+ * <li><code>${configValue}</code> - Simple config reference</li>
+ * <li><code>$configValue</code> - Alternative config reference</li>
+ * <li><code>triggerId.outputName</code> - Reference to trigger output</li>
+ * <li><code>triggerId.outputName[0]</code> - Array/list element access</li>
+ * <li><code>triggerId.outputName["key"]</code> - Map access</li>
+ * <li><code>triggerId.outputName.fieldName</code> - Bean property access</li>
+ * <li><code>triggerId.outputName.field[5]["key"]</code> - Chained access</li>
+ * </ul>
  *
  * @author Ana Dimova - Initial contribution
  * @author Kai Kreuzer - refactored (managed) provider and registry implementation
@@ -47,9 +70,38 @@ import org.openhab.core.automation.type.TriggerType;
 @NonNullByDefault
 public class ConnectionValidator {
 
+    /**
+     * Regex pattern matching configuration references.
+     * Matches: ${configKey} or $configKey where configKey is alphanumeric with hyphens/underscores.
+     * Examples: ${temperature}, $itemName, ${sensor-id}
+     */
     public static final String CONFIG_REFERENCE_PATTERN = "\\${1}\\{{1}[A-Za-z0-9_-]+\\}{1}|\\${1}[A-Za-z0-9_-]+";
+
+    /**
+     * Regex pattern for accessing nested properties in module outputs.
+     * Supports:
+     * - Array/list access: [index] e.g., [0], [42]
+     * - Map access: ["key"] e.g., ["temperature"], ["sensor-1"]
+     * - Property access: .propertyName e.g., .value, .timestamp
+     * Can be chained: .data[0]["key"].field
+     */
     public static final String OUTPUT_REFERENCE_PATTERN = "(\\[{1}\\\"{1}.+\\\"{1}\\]{1}|\\[{1}\\d+\\]{1}|\\.{1}[^\\[\\]][A-Za-z0-9_-]+[^\\]\\[\\.])*";
+
+    /**
+     * Regex pattern for module output references.
+     * Format: moduleId.outputName[optionalPropertyAccess]
+     * Examples:
+     * - trigger1.event
+     * - trigger1.event.value
+     * - action2.result[0]
+     * - condition1.output["data"].field
+     */
     public static final String MODULE_OUTPUT_PATTERN = "[A-Za-z0-9_-]+\\.{1}[A-Za-z0-9_-]+" + OUTPUT_REFERENCE_PATTERN;
+
+    /**
+     * Combined pattern matching any valid connection reference.
+     * Matches either a configuration reference OR a module output reference.
+     */
     public static final String CONNECTION_PATTERN = CONFIG_REFERENCE_PATTERN + "|" + MODULE_OUTPUT_PATTERN;
 
     /**

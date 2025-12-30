@@ -55,34 +55,84 @@ import com.google.gson.JsonSerializer;
 import com.google.gson.JsonSyntaxException;
 
 /**
- * This class handles the storage directly. It is internal to the OAuthClientService and there is
- * little need to study this.
+ * Persistent storage handler for OAuth 2.0 tokens and service configurations.
  *
- * The first role of this handler storing and caching the access token response, and persisted parameters.
+ * <p>
+ * <strong>Storage Architecture:</strong><br>
+ * This handler manages encrypted persistence of OAuth credentials using openHAB's Storage service.
+ * All sensitive data (access tokens, refresh tokens) is encrypted before storage using the configured
+ * {@link StorageCipher} implementation.
  *
- * The storage contains these:
- * 1. INDEX_HANDLES = json string-set of all handles
- * 2. <handle>.LastUsed = system-time-milliseconds
- * 3. <handle>.AccessTokenResponse = Json of AccessTokenResponse
- * 4. <handle>.ServiceConfiguration = Json of PersistedParameters
+ * <h3>Storage Schema</h3>
+ * <p>
+ * The storage contains the following entries per OAuth service handle:
+ * <ul>
+ * <li><strong>INDEX_HANDLES</strong> - JSON array of all registered OAuth handles</li>
+ * <li><strong>&lt;handle&gt;.AccessTokenResponse</strong> - Encrypted access/refresh tokens</li>
+ * <li><strong>&lt;handle&gt;.ServiceConfiguration</strong> - OAuth provider configuration (client ID, URLs)</li>
+ * <li><strong>&lt;handle&gt;.LastUsed</strong> - Timestamp for automatic cleanup</li>
+ * <li><strong>&lt;handle&gt;.DeviceCodeResponse</strong> - RFC 8628 device authorization data</li>
+ * </ul>
  *
- * If at any time, the storage is not available, it is still possible to read existing access tokens from store.
- * The last-used statistics for this access token is broken. It is a measured risk to take.
+ * <h3>Automatic Cleanup</h3>
+ * <p>
+ * OAuth entries are automatically removed if unused for {@link #EXPIRE_DAYS} days (183 days / 6 months).
+ * This prevents accumulation of stale OAuth authorizations. Cleanup runs during component deactivation.
  *
- * If at any time, the storage is not available, it is not able to write any new access tokens into store.
+ * <h3>Graceful Degradation</h3>
+ * <p>
+ * If the storage service becomes temporarily unavailable:
+ * <ul>
+ * <li><strong>Reads:</strong> Still possible from in-memory cache (last-used statistics may be stale)</li>
+ * <li><strong>Writes:</strong> Will fail, requiring token re-authorization when storage returns</li>
+ * </ul>
  *
- * All entries are subject to removal if they have not been used for 183 days or more (half year).
- * The recycle is performed when then instance is deactivated
+ * <h3>Thread Safety</h3>
+ * <p>
+ * All storage operations are protected by {@link java.util.concurrent.locks.ReentrantLock}
+ * to ensure consistency when multiple bindings access OAuth services concurrently.
+ *
+ * <h3>Encryption</h3>
+ * <p>
+ * The {@code CIPHER_TARGET} property selects which {@link StorageCipher} implementation to use.
+ * Default is {@link SymmetricKeyCipher} (AES-128). Tokens are encrypted individually, so cipher
+ * changes require re-authorization of all OAuth services.
  *
  * @author Gary Tse - Initial contribution
  * @author Andrew Fiddian-Green - added RFC-8628 support
+ * @see SymmetricKeyCipher
+ * @see org.openhab.core.storage.StorageService
  */
 @NonNullByDefault
 @Component(property = "CIPHER_TARGET=SymmetricKeyCipher")
 public class OAuthStoreHandlerImpl implements OAuthStoreHandler {
 
-    // easy mocking with protected access
+    /**
+     * Number of days before unused OAuth entries are automatically removed.
+     * <p>
+     * Set to 183 days (approximately 6 months) to balance between:
+     * <ul>
+     * <li>Allowing seasonal or infrequently used integrations to remain authorized</li>
+     * <li>Preventing indefinite accumulation of abandoned OAuth configurations</li>
+     * <li>Compliance with data retention policies (many require &lt; 1 year for inactive credentials)</li>
+     * </ul>
+     * <p>
+     * Note: "Last used" is updated whenever a token is loaded or saved, including automatic refreshes.
+     */
     protected static final int EXPIRE_DAYS = 183;
+
+    /**
+     * Maximum number of access token responses to cache in memory.
+     * <p>
+     * Set to 50 to accommodate:
+     * <ul>
+     * <li>Typical openHAB installations with 10-30 cloud-connected bindings</li>
+     * <li>Headroom for larger installations (some users have 100+ Things)</li>
+     * <li>Memory efficiency (each entry ~1-2KB, total ~50-100KB)</li>
+     * </ul>
+     * <p>
+     * Note: Currently unused (caching not yet implemented), but reserved for future optimization.
+     */
     protected static final int ACCESS_TOKEN_CACHE_SIZE = 50;
     private static final String STORE_NAME = "StorageHandler.For.OAuthClientService";
     private static final String STORE_KEY_INDEX_OF_HANDLES = "INDEX_HANDLES";

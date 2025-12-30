@@ -122,10 +122,38 @@ public class RuleEngineImpl implements RuleManager, RegistryChangeListener<Modul
      */
     public static final char OUTPUT_SEPARATOR = '.';
 
+    /**
+     * Storage key for persisting disabled rule UIDs.
+     */
     private static final String DISABLED_RULE_STORAGE = "automation_rules_disabled";
 
-    private static final int RULE_INIT_DELAY = 500;
+    /**
+     * Delay in milliseconds before retrying rule initialization after a failure.
+     * This delay prevents rapid retry loops when module handlers or types are temporarily unavailable.
+     */
+    private static final int RULE_INIT_DELAY_MS = 500;
 
+    /**
+     * Initial capacity for the module handler factory map.
+     * Based on typical system configuration with ~15-20 module types.
+     */
+    private static final int MODULE_HANDLER_FACTORY_MAP_INITIAL_CAPACITY = 20;
+
+    /**
+     * Initial capacity for the schedule tasks map.
+     * Prime number chosen for better hash distribution. Sized for typical systems with 20-30 rules.
+     */
+    private static final int SCHEDULE_TASKS_MAP_INITIAL_CAPACITY = 31;
+
+    /**
+     * Initial capacity for the notInitializedRules set during batch initialization.
+     * Sized for typical scenarios with 10-20 rules pending initialization.
+     */
+    private static final int NOT_INITIALIZED_RULES_SET_INITIAL_CAPACITY = 20;
+
+    /**
+     * Ready marker indicating the rule engine has completed startup initialization.
+     */
     private static final ReadyMarker MARKER = new ReadyMarker("ruleengine", "start");
 
     private final Map<String, WrappedRule> managedRules = new ConcurrentHashMap<>();
@@ -147,7 +175,8 @@ public class RuleEngineImpl implements RuleManager, RegistryChangeListener<Modul
      * {@link Map} holding all available {@link ModuleHandlerFactory}s linked with {@link ModuleType}s that they
      * supporting. The relation is {@link ModuleType}'s UID to {@link ModuleHandlerFactory} instance.
      */
-    private final Map<String, ModuleHandlerFactory> moduleHandlerFactories = new HashMap<>(20);
+    private final Map<String, ModuleHandlerFactory> moduleHandlerFactories = new HashMap<>(
+            MODULE_HANDLER_FACTORY_MAP_INITIAL_CAPACITY);
 
     /**
      * {@link Set} holding all available {@link ModuleHandlerFactory}s.
@@ -198,7 +227,7 @@ public class RuleEngineImpl implements RuleManager, RegistryChangeListener<Modul
      * {@link Map} holding all scheduled {@link Rule} re-initialization tasks. The relation is {@link Rule}'s
      * UID to re-initialization task as a {@link Future} instance.
      */
-    private final Map<String, Future<?>> scheduleTasks = new HashMap<>(31);
+    private final Map<String, Future<?>> scheduleTasks = new HashMap<>(SCHEDULE_TASKS_MAP_INITIAL_CAPACITY);
 
     /**
      * Performs the {@link Rule} re-initialization tasks.
@@ -411,7 +440,8 @@ public class RuleEngineImpl implements RuleManager, RegistryChangeListener<Modul
                 for (String rUID : rules) {
                     RuleStatus ruleStatus = getRuleStatus(rUID);
                     if (ruleStatus == RuleStatus.UNINITIALIZED) {
-                        notInitializedRules = notInitializedRules != null ? notInitializedRules : new HashSet<>(20);
+                        notInitializedRules = notInitializedRules != null ? notInitializedRules
+                                : new HashSet<>(NOT_INITIALIZED_RULES_SET_INITIAL_CAPACITY);
                         notInitializedRules.add(rUID);
                     }
                 }
@@ -993,7 +1023,7 @@ public class RuleEngineImpl implements RuleManager, RegistryChangeListener<Modul
                     return;
                 }
                 setRule(managedRule);
-            }, RULE_INIT_DELAY, TimeUnit.MILLISECONDS));
+            }, RULE_INIT_DELAY_MS, TimeUnit.MILLISECONDS));
         }
     }
 

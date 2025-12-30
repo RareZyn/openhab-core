@@ -42,24 +42,64 @@ import org.slf4j.LoggerFactory;
 import com.google.gson.GsonBuilder;
 
 /**
- * Implementation of OAuthClientService.
+ * Implementation of OAuthClientService providing OAuth 2.0 authentication flows.
  *
- * It requires the following services:
+ * <p>
+ * This service implements the following OAuth 2.0 grant types as defined in RFC 6749:
+ * <ul>
+ * <li>Authorization Code Grant (Section 4.1) - for web applications</li>
+ * <li>Resource Owner Password Credentials Grant (Section 4.3) - for trusted clients</li>
+ * <li>Client Credentials Grant (Section 4.4) - for service-to-service authentication</li>
+ * <li>Refresh Token (Section 6) - for obtaining new access tokens</li>
+ * </ul>
  *
- * org.openhab.core.storage.Storage (mandatory; for storing grant tokens, access tokens and refresh tokens)
+ * <p>
+ * Additionally supports RFC 8628 Device Authorization Grant for devices with limited input capabilities.
  *
- * HttpClientFactory for http connections with Jetty
+ * <h3>Required Services</h3>
+ * <ul>
+ * <li>{@code org.openhab.core.storage.Storage} - Persists OAuth tokens and configuration (mandatory)</li>
+ * <li>{@code HttpClientFactory} - Provides HTTP clients for OAuth provider communication (mandatory)</li>
+ * </ul>
  *
- * The OAuthTokens, request parameters are stored and persisted using the "Storage" service.
- * This allows the token to be automatically refreshed when needed.
+ * <h3>Token Storage and Encryption</h3>
+ * <p>
+ * Access tokens, refresh tokens, and client secrets are encrypted using AES-128 before storage.
+ * This protects sensitive credentials at rest. The encryption key is managed by {@link SymmetricKeyCipher}.
+ *
+ * <h3>Automatic Token Refresh</h3>
+ * <p>
+ * The service automatically refreshes expired access tokens using the refresh token when available.
+ * A configurable time buffer (default 10 seconds) is applied to token expiry times to prevent
+ * race conditions where a token is valid when retrieved but expires before use.
+ *
+ * <h3>Thread Safety</h3>
+ * <p>
+ * Token refresh operations are synchronized to prevent duplicate refresh requests when multiple
+ * threads simultaneously detect an expired token.
  *
  * @author Michael Bock - Initial contribution
  * @author Gary Tse - Initial contribution
  * @author Gaël L'hopital - Added capability for custom deserializer
+ * @see <a href="https://tools.ietf.org/html/rfc6749">RFC 6749 - OAuth 2.0 Authorization Framework</a>
+ * @see <a href="https://tools.ietf.org/html/rfc8628">RFC 8628 - Device Authorization Grant</a>
  */
 @NonNullByDefault
 public class OAuthClientServiceImpl implements OAuthClientService {
 
+    /**
+     * Default time buffer in seconds applied to token expiry times.
+     * <p>
+     * This 10-second buffer prevents race conditions where:
+     * <ol>
+     * <li>Client retrieves a token showing 5 seconds until expiry</li>
+     * <li>Network latency delays the actual API call by 6 seconds</li>
+     * <li>The API call fails because the token has expired</li>
+     * </ol>
+     * <p>
+     * The buffer also accounts for minor clock skew between the openHAB server
+     * and OAuth provider servers (typically under 5 seconds per NTP standards).
+     */
     public static final int DEFAULT_TOKEN_EXPIRES_IN_BUFFER_SECOND = 10;
 
     private static final String EXCEPTION_MESSAGE_CLOSED = "Client service is closed";
@@ -232,14 +272,38 @@ public class OAuthClientServiceImpl implements OAuthClientService {
     }
 
     /**
-     * Implicit Grant (RFC 6749 section 4.2) is not implemented. It is directly interacting with user-agent
-     * The implicit grant is not implemented. It usually involves browser/javascript redirection flows
-     * and is out of openHAB scope.
+     * Implicit Grant (RFC 6749 section 4.2) is intentionally not implemented.
+     *
+     * <p>
+     * <strong>Why this flow is unsupported:</strong>
+     * <ul>
+     * <li>The Implicit Grant flow is deprecated per OAuth 2.0 Security Best Current Practice (RFC 8252)</li>
+     * <li>It requires direct user-agent (browser) interaction with JavaScript, which is outside openHAB's
+     * server-side architecture</li>
+     * <li>Tokens are exposed in browser URLs, creating security vulnerabilities</li>
+     * <li>Modern OAuth providers recommend Authorization Code Grant with PKCE instead</li>
+     * </ul>
+     *
+     * <p>
+     * <strong>Recommended alternative:</strong><br>
+     * Use {@link #getAccessTokenResponseByAuthorizationCode(String, String)} with PKCE extension for
+     * browser-based flows, or {@link #getDeviceCodeResponse()} for devices with limited input.
+     *
+     * @param redirectURI The redirect URI (not used)
+     * @param scope The requested scope (not used)
+     * @param state The state parameter (not used)
+     * @return Never returns; always throws exception
+     * @throws UnsupportedOperationException Always thrown as this flow is not implemented
+     * @see <a href="https://tools.ietf.org/html/rfc8252">RFC 8252 - OAuth 2.0 for Native Apps</a>
+     * @see <a href="https://oauth.net/2/grant-types/implicit/">OAuth.net - Implicit Flow Deprecation</a>
      */
     @Override
     public AccessTokenResponse getAccessTokenByImplicit(@Nullable String redirectURI, @Nullable String scope,
             @Nullable String state) throws OAuthException, IOException, OAuthResponseException {
-        throw new UnsupportedOperationException("Implicit Grant is not implemented");
+        throw new UnsupportedOperationException("Implicit Grant flow is not implemented. "
+                + "This flow is deprecated per OAuth 2.0 Security Best Current Practice (RFC 8252). "
+                + "Please use Authorization Code Grant with PKCE or Device Authorization Grant instead. "
+                + "See https://oauth.net/2/grant-types/implicit/ for details.");
     }
 
     @Override
@@ -301,12 +365,35 @@ public class OAuthClientServiceImpl implements OAuthClientService {
     }
 
     /**
-     * Inner private method for refreshToken. If 'forceRefresh' is false then only fetch a new token if
-     * the prior token is not expired, otherwise return the prior token. If 'forceRefresh' is true
-     * then always fetch a new token.
+     * Inner private method for refreshToken with optional expiry checking.
      *
-     * @param forceRefresh determines whether to force a refresh or check for token expiry
-     * @return either the prior AccessTokenResponse or a new one
+     * <p>
+     * This method implements smart token refresh logic:
+     * <ul>
+     * <li>If {@code forceRefresh = true}: Always requests a new token from the OAuth provider</li>
+     * <li>If {@code forceRefresh = false}: Only refreshes if the current token is expired or will
+     * expire within the configured buffer time</li>
+     * </ul>
+     *
+     * <p>
+     * <strong>Synchronization:</strong> This method is synchronized via {@code refreshTokenProcessLock}
+     * to prevent multiple threads from simultaneously refreshing the same token, which could lead to:
+     * <ul>
+     * <li>Wasted API calls to the OAuth provider</li>
+     * <li>Race conditions where tokens overwrite each other in storage</li>
+     * <li>Potential rate limiting from the OAuth provider</li>
+     * </ul>
+     *
+     * <p>
+     * <strong>Refresh token preservation:</strong> Some OAuth providers do not return a new refresh
+     * token in the response. In this case, the existing refresh token is preserved and reused for
+     * future refresh operations.
+     *
+     * @param forceRefresh {@code true} to always fetch a new token; {@code false} to check expiry first
+     * @return either the existing (still valid) token or a newly refreshed token
+     * @throws OAuthException if token refresh fails due to missing refresh token or storage errors
+     * @throws IOException if network communication with the OAuth provider fails
+     * @throws OAuthResponseException if the OAuth provider returns an error response (e.g., invalid_grant)
      */
     private AccessTokenResponse refreshTokenInner(boolean forceRefresh)
             throws OAuthException, IOException, OAuthResponseException {

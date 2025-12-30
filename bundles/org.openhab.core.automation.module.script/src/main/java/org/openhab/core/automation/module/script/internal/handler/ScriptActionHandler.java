@@ -41,6 +41,12 @@ public class ScriptActionHandler extends AbstractScriptModuleHandler<Action> imp
 
     public static final String TYPE_ID = "script.ScriptAction";
 
+    /**
+     * Maximum time in minutes to wait for acquiring a script engine lock.
+     * This prevents indefinite blocking if a script engine implements locking.
+     */
+    private static final long SCRIPT_LOCK_TIMEOUT_MINUTES = 1;
+
     private final Logger logger = LoggerFactory.getLogger(ScriptActionHandler.class);
     private final Consumer<ScriptActionHandler> onRemoval;
 
@@ -85,14 +91,17 @@ public class ScriptActionHandler extends AbstractScriptModuleHandler<Action> imp
 
         getScriptEngine().ifPresent(scriptEngine -> {
             try {
-                if (scriptEngine instanceof Lock lock && !lock.tryLock(1, TimeUnit.MINUTES)) {
+                if (scriptEngine instanceof Lock lock && !lock.tryLock(SCRIPT_LOCK_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
                     logger.error(
-                            "Failed to acquire lock within one minute for script module '{}' of rule with UID '{}'",
-                            module.getId(), ruleUID);
+                            "Failed to acquire lock within {} minute(s) for script module '{}' of rule with UID '{}'",
+                            SCRIPT_LOCK_TIMEOUT_MINUTES, module.getId(), ruleUID);
                     return;
                 }
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                Thread.currentThread().interrupt(); // Restore interrupt status
+                logger.warn("Thread interrupted while waiting for lock on script module '{}' of rule with UID '{}'",
+                        module.getId(), ruleUID);
+                return;
             }
             try {
                 setExecutionContext(scriptEngine, context);

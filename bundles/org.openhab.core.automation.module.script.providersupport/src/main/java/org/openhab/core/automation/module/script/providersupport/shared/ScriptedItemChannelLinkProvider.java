@@ -13,8 +13,8 @@
 package org.openhab.core.automation.module.script.providersupport.shared;
 
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -29,6 +29,8 @@ import org.slf4j.LoggerFactory;
 /**
  * This {@link ItemChannelLinkProvider} keeps {@link ItemChannelLink}s provided by scripts during runtime.
  * This ensures that {@link ItemChannelLink}s are not kept on reboot, but have to be provided by the scripts again.
+ * <p>
+ * <b>Thread Safety:</b> This provider is thread-safe and supports concurrent access from multiple scripts.
  *
  * @author Florian Hotze - Initial contribution
  */
@@ -37,7 +39,12 @@ import org.slf4j.LoggerFactory;
 public class ScriptedItemChannelLinkProvider extends AbstractProvider<ItemChannelLink>
         implements ItemChannelLinkProvider, ManagedProvider<ItemChannelLink, String> {
     private final Logger logger = LoggerFactory.getLogger(ScriptedItemChannelLinkProvider.class);
-    private final Map<String, ItemChannelLink> itemChannelLinks = new HashMap<>();
+
+    /**
+     * Thread-safe storage for script-provided item-channel links.
+     * Uses ConcurrentHashMap to allow safe concurrent access from multiple scripts.
+     */
+    private final Map<String, ItemChannelLink> itemChannelLinks = new ConcurrentHashMap<>();
 
     @Override
     public Collection<ItemChannelLink> getAll() {

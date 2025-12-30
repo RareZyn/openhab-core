@@ -125,11 +125,20 @@ public final class Connection {
         return sb.toString();
     }
 
+    /**
+     * Computes hash code based on all fields rather than toString() to avoid unnecessary string creation.
+     * This is more efficient and follows best practices for hashCode implementation.
+     *
+     * @return computed hash code based on inputName, outputModuleId, outputName, and reference
+     */
     @Override
     public int hashCode() {
         final int prime = 31;
         int result = 1;
-        result = prime * result + toString().hashCode();
+        result = prime * result + inputName.hashCode();
+        result = prime * result + ((outputModuleId == null) ? 0 : outputModuleId.hashCode());
+        result = prime * result + ((outputName == null) ? 0 : outputName.hashCode());
+        result = prime * result + ((reference == null) ? 0 : reference.hashCode());
         return result;
     }
 

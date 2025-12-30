@@ -123,10 +123,23 @@ public class ProviderItemChannelLinkRegistry implements Registry<ItemChannelLink
         return itemChannelLinkRegistry.remove(key);
     }
 
+    /**
+     * Removes all item-channel links associated with the specified Thing.
+     * <p>
+     * This method scans all links in the registry and removes those pointing to channels belonging to the specified
+     * Thing. Useful when a Thing is removed and all its channel links need to be cleaned up.
+     * <p>
+     * <b>Performance Note:</b> This method performs an O(n) scan of all links. For large registries, consider
+     * implementing indexed lookups if this becomes a bottleneck.
+     *
+     * @param thingUID the UID of the Thing whose links should be removed
+     * @return the number of links removed
+     */
     public int removeLinksForThing(ThingUID thingUID) {
         int removedLinks = 0;
         Collection<ItemChannelLink> itemChannelLinks = getAll();
         for (ItemChannelLink itemChannelLink : itemChannelLinks) {
+            // Check if this link points to a channel on the specified Thing
             if (itemChannelLink.getLinkedUID().getThingUID().equals(thingUID)) {
                 this.remove(itemChannelLink.getUID());
                 removedLinks++;
@@ -135,10 +148,23 @@ public class ProviderItemChannelLinkRegistry implements Registry<ItemChannelLink
         return removedLinks;
     }
 
+    /**
+     * Removes all item-channel links associated with the specified item.
+     * <p>
+     * This method scans all links in the registry and removes those linking the specified item to any channel.
+     * Useful when an item is removed and all its channel links need to be cleaned up.
+     * <p>
+     * <b>Performance Note:</b> This method performs an O(n) scan of all links. For large registries, consider
+     * implementing indexed lookups if this becomes a bottleneck.
+     *
+     * @param itemName the name of the item whose links should be removed
+     * @return the number of links removed
+     */
     public int removeLinksForItem(String itemName) {
         int removedLinks = 0;
         Collection<ItemChannelLink> itemChannelLinks = getAll();
         for (ItemChannelLink itemChannelLink : itemChannelLinks) {
+            // Check if this link belongs to the specified item
             if (itemChannelLink.getItemName().equals(itemName)) {
                 this.remove(itemChannelLink.getUID());
                 removedLinks++;

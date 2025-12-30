@@ -40,6 +40,12 @@ public class ScriptConditionHandler extends AbstractScriptModuleHandler<Conditio
 
     public static final String TYPE_ID = "script.ScriptCondition";
 
+    /**
+     * Maximum time in minutes to wait for acquiring a script engine lock.
+     * This prevents indefinite blocking if a script engine implements locking.
+     */
+    private static final long SCRIPT_LOCK_TIMEOUT_MINUTES = 1;
+
     private final Logger logger = LoggerFactory.getLogger(ScriptConditionHandler.class);
 
     public ScriptConditionHandler(Condition module, String ruleUID, ScriptEngineManager scriptEngineManager) {
@@ -69,14 +75,17 @@ public class ScriptConditionHandler extends AbstractScriptModuleHandler<Conditio
         if (engine.isPresent()) {
             ScriptEngine scriptEngine = engine.get();
             try {
-                if (scriptEngine instanceof Lock lock && !lock.tryLock(1, TimeUnit.MINUTES)) {
+                if (scriptEngine instanceof Lock lock && !lock.tryLock(SCRIPT_LOCK_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
                     logger.error(
-                            "Failed to acquire lock within one minute for script module '{}' of rule with UID '{}'",
-                            module.getId(), ruleUID);
+                            "Failed to acquire lock within {} minute(s) for script module '{}' of rule with UID '{}'",
+                            SCRIPT_LOCK_TIMEOUT_MINUTES, module.getId(), ruleUID);
                     return result;
                 }
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                Thread.currentThread().interrupt(); // Restore interrupt status
+                logger.warn("Thread interrupted while waiting for lock on script module '{}' of rule with UID '{}'",
+                        module.getId(), ruleUID);
+                return result;
             }
             try {
                 setExecutionContext(scriptEngine, context);
@@ -84,8 +93,10 @@ public class ScriptConditionHandler extends AbstractScriptModuleHandler<Conditio
                 if (returnVal instanceof Boolean boolean1) {
                     result = boolean1;
                 } else {
-                    logger.error("Script of rule with UID '{}' did not return a boolean value, but '{}'", ruleUID,
-                            returnVal);
+                    logger.error(
+                            "Script condition failed: expected boolean, got '{}' (type: {}) for module '{}' of rule with UID '{}'",
+                            returnVal, returnVal != null ? returnVal.getClass().getSimpleName() : "null",
+                            module.getId(), ruleUID);
                 }
                 resetExecutionContext(scriptEngine, context);
             } finally { // Make sure that Lock is unlocked regardless of an exception being thrown or not to avoid

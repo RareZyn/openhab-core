@@ -30,6 +30,19 @@ import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Reference;
 
 /**
+ * Factory for creating media-related automation module handlers.
+ *
+ * <p>
+ * This factory is responsible for instantiating action handlers for media operations within the openHAB automation
+ * engine. It creates handlers for play, say, and synthesize actions.
+ * </p>
+ *
+ * <h3>Supported Module Types:</h3>
+ * <ul>
+ * <li><b>media.SayAction</b>: Text-to-speech action handler</li>
+ * <li><b>media.PlayAction</b>: Sound file playback action handler</li>
+ * <li><b>media.SynthesizeAction</b>: Tone melody synthesis action handler</li>
+ * </ul>
  *
  * @author Kai Kreuzer - Initial contribution
  * @author Christoph Weitkamp - Added parameter volume
@@ -38,7 +51,8 @@ import org.osgi.service.component.annotations.Reference;
 @Component(service = ModuleHandlerFactory.class)
 public class MediaModuleHandlerFactory extends BaseModuleHandlerFactory {
 
-    private static final Collection<String> TYPES = List.of(SayActionHandler.TYPE_ID, PlayActionHandler.TYPE_ID);
+    private static final Collection<String> TYPES = List.of(SayActionHandler.TYPE_ID, PlayActionHandler.TYPE_ID,
+            SynthesizeActionHandler.TYPE_ID);
     private final VoiceManager voiceManager;
     private final AudioManager audioManager;
 

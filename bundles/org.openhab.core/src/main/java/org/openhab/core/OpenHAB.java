@@ -60,15 +60,26 @@ public class OpenHAB {
 
     /**
      * Returns the current openHAB version, retrieving the information from the core bundle version.
+     * <p>
+     * The version is derived from the OSGi bundle version. If the version contains a snapshot qualifier
+     * (e.g., "5.1.0.qualifier"), it is automatically removed to produce a clean version string (e.g., "5.1.0").
+     * <p>
+     * Examples:
+     * <ul>
+     * <li>"5.1.0" → "5.1.0"</li>
+     * <li>"5.1.0.qualifier" → "5.1.0"</li>
+     * <li>"5.1.0.202501261234" → "5.1.0"</li>
+     * </ul>
      *
-     * @return the openHAB runtime version
+     * @return the openHAB runtime version (e.g., "5.1.0")
      */
     public static String getVersion() {
         String versionString = FrameworkUtil.getBundle(OpenHAB.class).getVersion().toString();
-        // if the version string contains a "snapshot" qualifier, remove it!
+        // If the version string contains a "snapshot" qualifier (4 segments), remove the last segment
         if (versionString.chars().filter(ch -> ch == '.').count() == 3) {
             final Pattern pattern = Pattern.compile("\\d+(\\.\\d+)?");
             String qualifier = substringAfterLast(versionString, ".");
+            // Remove qualifier if it's a timestamp or the literal "qualifier"
             if (pattern.matcher(qualifier).matches() || "qualifier".equals(qualifier)) {
                 versionString = substringBeforeLast(versionString, ".");
             }
@@ -90,8 +101,12 @@ public class OpenHAB {
             if (buildNo != null && !buildNo.isEmpty()) {
                 return buildNo;
             }
-        } catch (Exception e) {
-            // ignore if the file is not there or not readable
+        } catch (java.io.IOException e) {
+            // File not found or not readable - expected in development environments
+        } catch (SecurityException e) {
+            // File access denied - security manager restrictions
+        } catch (IllegalArgumentException e) {
+            // Invalid path format - should not occur with hardcoded path
         }
         return "Unknown Build No.";
     }
@@ -141,12 +156,26 @@ public class OpenHAB {
         }
     }
 
+    /**
+     * Extracts the substring after the last occurrence of a separator.
+     *
+     * @param str the string to search in
+     * @param separator the separator string to find
+     * @return the substring after the last separator, or empty string if separator not found or at the end
+     */
     private static String substringAfterLast(String str, String separator) {
         int index = str.lastIndexOf(separator);
         return index == -1 || index == str.length() - separator.length() ? ""
                 : str.substring(index + separator.length());
     }
 
+    /**
+     * Extracts the substring before the last occurrence of a separator.
+     *
+     * @param str the string to search in
+     * @param separator the separator string to find
+     * @return the substring before the last separator, or the original string if separator not found
+     */
     private static String substringBeforeLast(String str, String separator) {
         int index = str.lastIndexOf(separator);
         return index == -1 ? str : str.substring(0, index);

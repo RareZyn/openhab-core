@@ -13,8 +13,8 @@
 package org.openhab.core.automation.module.script.providersupport.shared;
 
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -31,6 +31,8 @@ import org.slf4j.LoggerFactory;
 /**
  * This {@link org.openhab.core.items.MetadataProvider} keeps metadata provided by scripts during runtime.
  * This ensures that metadata is not kept on reboot, but has to be provided by the scripts again.
+ * <p>
+ * <b>Thread Safety:</b> This provider is thread-safe and supports concurrent access from multiple scripts.
  *
  * @author Florian Hotze - Initial contribution
  */
@@ -38,7 +40,12 @@ import org.slf4j.LoggerFactory;
 @Component(immediate = true, service = { ScriptedMetadataProvider.class, MetadataProvider.class })
 public class ScriptedMetadataProvider extends AbstractProvider<Metadata> implements ManagedMetadataProvider {
     private final Logger logger = LoggerFactory.getLogger(ScriptedMetadataProvider.class);
-    private final Map<MetadataKey, Metadata> metadataStorage = new HashMap<>();
+
+    /**
+     * Thread-safe storage for script-provided metadata.
+     * Uses ConcurrentHashMap to allow safe concurrent access from multiple scripts.
+     */
+    private final Map<MetadataKey, Metadata> metadataStorage = new ConcurrentHashMap<>();
 
     @Override
     public void removeItemMetadata(String name) {

@@ -24,6 +24,8 @@ import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.openhab.core.audio.utils.AudioStreamUtils;
 import org.openhab.core.audio.utils.AudioWaveUtils;
 import org.openhab.core.common.Disposable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This is an AudioStream from an audio file
@@ -34,6 +36,8 @@ import org.openhab.core.common.Disposable;
  */
 @NonNullByDefault
 public class FileAudioStream extends FixedLengthAudioStream implements Disposable {
+
+    private final Logger logger = LoggerFactory.getLogger(FileAudioStream.class);
 
     public static final String WAV_EXTENSION = "wav";
     public static final String MP3_EXTENSION = "mp3";
@@ -125,6 +129,8 @@ public class FileAudioStream extends FixedLengthAudioStream implements Disposabl
         try {
             inputStream.close();
         } catch (IOException e) {
+            logger.warn("Failed to close input stream during reset for file '{}': {}", file.getAbsolutePath(),
+                    e.getMessage());
         }
         try {
             inputStream = getInputStream(file);

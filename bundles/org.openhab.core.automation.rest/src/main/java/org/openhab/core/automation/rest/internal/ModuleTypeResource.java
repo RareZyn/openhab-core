@@ -63,7 +63,26 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * This class acts as a REST resource for module types and is registered with the Jersey servlet.
+ * REST resource for managing automation module types in openHAB.
+ *
+ * <p>
+ * This resource provides access to module type metadata that defines the building blocks
+ * of automation rules. Module types include:
+ * <ul>
+ * <li><b>Triggers</b> - Define when a rule should execute (e.g., time-based, item state changes)</li>
+ * <li><b>Conditions</b> - Define prerequisites for rule execution (e.g., item state comparisons)</li>
+ * <li><b>Actions</b> - Define what happens when a rule executes (e.g., send commands, notifications)</li>
+ * </ul>
+ * </p>
+ *
+ * <p>
+ * Module types can be simple or composite. Composite types contain child modules
+ * and represent reusable automation patterns.
+ * </p>
+ *
+ * <p>
+ * All endpoints support localization via the Accept-Language header.
+ * </p>
  *
  * @author Kai Kreuzer - Initial contribution
  * @author Markus Rathgeb - Use DTOs
@@ -83,6 +102,15 @@ public class ModuleTypeResource implements RESTResource {
 
     /** The URI path to this resource */
     public static final String PATH_MODULE_TYPES = "module-types";
+
+    /** Module type identifier for triggers */
+    private static final String TYPE_TRIGGER = "trigger";
+
+    /** Module type identifier for conditions */
+    private static final String TYPE_CONDITION = "condition";
+
+    /** Module type identifier for actions */
+    private static final String TYPE_ACTION = "action";
 
     private final LocaleService localeService;
     private final ModuleTypeRegistry moduleTypeRegistry;
@@ -114,7 +142,7 @@ public class ModuleTypeResource implements RESTResource {
             modulesMap = new LinkedHashMap<>();
         }
 
-        if (type == null || "trigger".equals(type)) {
+        if (type == null || TYPE_TRIGGER.equals(type)) {
             if (modules != null) {
                 modules.addAll(TriggerTypeDTOMapper.map(moduleTypeRegistry.getTriggers(locale, tags)));
             } else if (modulesMap != null) {
@@ -122,7 +150,7 @@ public class ModuleTypeResource implements RESTResource {
                         TriggerTypeDTOMapper.map(moduleTypeRegistry.getTriggers(locale, tags))));
             }
         }
-        if (type == null || "condition".equals(type)) {
+        if (type == null || TYPE_CONDITION.equals(type)) {
             if (modules != null) {
                 modules.addAll(ConditionTypeDTOMapper.map(moduleTypeRegistry.getConditions(locale, tags)));
             } else if (modulesMap != null) {
@@ -130,7 +158,7 @@ public class ModuleTypeResource implements RESTResource {
                         ConditionTypeDTOMapper.map(moduleTypeRegistry.getConditions(locale, tags))));
             }
         }
-        if (type == null || "action".equals(type)) {
+        if (type == null || TYPE_ACTION.equals(type)) {
             if (modules != null) {
                 modules.addAll(ActionTypeDTOMapper.map(moduleTypeRegistry.getActions(locale, tags)));
             } else if (modulesMap != null) {
@@ -159,6 +187,26 @@ public class ModuleTypeResource implements RESTResource {
         }
     }
 
+    /**
+     * Converts a ModuleType to its corresponding DTO representation.
+     *
+     * <p>
+     * This method handles the type hierarchy of module types, including:
+     * <ul>
+     * <li>Simple types (ActionType, ConditionType, TriggerType)</li>
+     * <li>Composite types (CompositeActionType, CompositeConditionType, CompositeTriggerType)</li>
+     * </ul>
+     * </p>
+     *
+     * <p>
+     * Composite types contain child modules and are mapped to DTOs that preserve
+     * this hierarchical structure.
+     * </p>
+     *
+     * @param moduleType the module type to convert
+     * @return the corresponding DTO representation
+     * @throws IllegalArgumentException if the module type class is not recognized
+     */
     private ModuleTypeDTO getModuleTypeDTO(final ModuleType moduleType) {
         if (moduleType instanceof ActionType actionType) {
             if (moduleType instanceof CompositeActionType compositeActionType) {
