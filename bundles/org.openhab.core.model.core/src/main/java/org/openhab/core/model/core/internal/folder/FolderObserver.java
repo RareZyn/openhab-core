@@ -21,13 +21,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Dictionary;
 import java.util.Enumeration;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -75,14 +73,21 @@ public class FolderObserver implements WatchService.WatchEventListener {
     private final Map<String, Set<String>> folderFileExtMap = new ConcurrentHashMap<>();
 
     /* set of file extensions for which we have parsers already registered */
-    private final Set<String> parsers = new HashSet<>();
+    private final Set<String> parsers = ConcurrentHashMap.newKeySet();
 
     /* set of file extensions for missing parsers during activation */
-    private final Set<String> missingParsers = new HashSet<>();
+    private final Set<String> missingParsers = ConcurrentHashMap.newKeySet();
 
     /* set of files that have been ignored due to a missing parser */
-    private final Set<Path> ignoredPaths = new HashSet<>();
-    private final Map<String, Path> namePathMap = new HashMap<>();
+    private final Set<Path> ignoredPaths = ConcurrentHashMap.newKeySet();
+    private final Map<String, Path> namePathMap = new ConcurrentHashMap<>();
+
+    // Lock used to protect repository operations and related maps when needed.
+    private final Object repoLock = new Object();
+
+    // Constants for readability and single-source-of-truth
+    private static final int EXPECTED_RELATIVE_NAME_COUNT = 2; // folder + file
+    private static final String EXTENSION_SEPARATOR = ".";
 
     @Activate
     public FolderObserver(final @Reference ModelRepository modelRepo, final @Reference ReadyService readyService,
@@ -108,14 +113,40 @@ public class FolderObserver implements WatchService.WatchEventListener {
         }
     }
 
+    /**
+     * Called by the OSGi framework when a {@link ModelParser} becomes available.
+     *
+     * This registers the parser's extension so incoming file events for that
+     * extension will be handled. If the observer is already activated, any
+     * previously ignored paths for the extension will be re-processed and a
+     * ReadyMarker will be emitted.
+     *
+     * Thread-safety: this method may be called by the OSGi DS framework and may
+     * race with file events; internal collections used here are concurrent.
+     *
+     * @param modelParser the parser instance being registered
+     */
+
     protected void removeModelParser(ModelParser modelParser) {
         String extension = modelParser.getExtension();
         logger.debug("Removing parser for '{}' extension", extension);
         parsers.remove(extension);
 
+        /**
+         * Called by OSGi when this component is activated.
+         *
+         * It reads configuration properties to determine which folders to watch,
+         * registers this observer with the {@link WatchService}, and initially
+         * populates the model repository with existing files.
+         *
+         * Note: configuration keys that do not match {@code VALID_FOLDER_NAME_REGEX}
+         * are ignored.
+         *
+         * @param ctx the component context
+         */
         Set<String> removed = modelRepository.removeAllModelsOfType(extension);
-        ignoredPaths
-                .addAll(removed.stream().map(namePathMap::get).filter(Objects::nonNull).collect(Collectors.toSet()));
+        // add any paths corresponding to removed models to ignoredPaths (concurrent-safe)
+        removed.stream().map(namePathMap::get).filter(Objects::nonNull).forEach(ignoredPaths::add);
     }
 
     @Activate
@@ -130,7 +161,7 @@ public class FolderObserver implements WatchService.WatchEventListener {
         Enumeration<String> keys = config.keys();
         while (keys.hasMoreElements()) {
             String folderName = keys.nextElement();
-            if (!folderName.matches("[A-Za-z0-9_]*")) {
+            if (!isValidFolderName(folderName)) {
                 // we allow only simple alphanumeric names for model folders - everything else might be other service
                 // properties
                 continue;
@@ -185,9 +216,20 @@ public class FolderObserver implements WatchService.WatchEventListener {
         logger.debug("{} has been deactivated", FolderObserver.class.getSimpleName());
     }
 
+    /**
+     * Handle a watch event delivered by the {@link WatchService}.
+     *
+     * This method is invoked by the watch service thread. It validates the
+     * event path (only depth 1 is accepted), checks the folder's configured
+     * extensions and delegates to {@link #checkPath(Path, WatchService.Kind)}.
+     *
+     * @param kind the kind of watch event (CREATE, MODIFY, DELETE)
+     * @param fullPath the absolute path of the changed file
+     */
     private void processIgnoredPaths(String extension) {
         logger.debug("Processing {} ignored paths for '{}' extension", ignoredPaths.size(), extension);
 
+        // Use a snapshot to avoid concurrent modification issues while iterating
         Set<Path> clonedSet = new HashSet<>(ignoredPaths);
         for (Path path : clonedSet) {
             if (extension.equals(getExtension(path))) {
@@ -260,7 +302,7 @@ public class FolderObserver implements WatchService.WatchEventListener {
             // Checking isHidden() on a deleted file will throw an IOException on some file systems,
             // so deal with deletion first.
             if (kind == DELETE) {
-                synchronized (FolderObserver.class) {
+                synchronized (repoLock) {
                     modelRepository.removeModel(fileName);
                     namePathMap.remove(fileName);
                     logger.debug("Removed '{}' model ", fileName);
@@ -276,7 +318,7 @@ public class FolderObserver implements WatchService.WatchEventListener {
                 return;
             }
 
-            synchronized (FolderObserver.class) {
+            synchronized (repoLock) {
                 if (kind == CREATE || kind == MODIFY) {
                     String extension = getExtension(fileName);
                     if (parsers.contains(extension)) {
@@ -305,7 +347,9 @@ public class FolderObserver implements WatchService.WatchEventListener {
     }
 
     private static @Nullable String getExtension(String fileName) {
-        return fileName.contains(".") ? fileName.substring(fileName.lastIndexOf(".") + 1) : null;
+        return fileName.contains(EXTENSION_SEPARATOR)
+                ? fileName.substring(fileName.lastIndexOf(EXTENSION_SEPARATOR) + 1)
+                : null;
     }
 
     private static @Nullable String getExtension(Path path) {
@@ -315,7 +359,7 @@ public class FolderObserver implements WatchService.WatchEventListener {
     @Override
     public void processWatchEvent(WatchService.Kind kind, Path fullPath) {
         Path path = watchPath.relativize(fullPath);
-        if (path.getNameCount() != 2) {
+        if (path.getNameCount() != EXPECTED_RELATIVE_NAME_COUNT) {
             logger.trace("{} event for {} ignored (only depth 1 allowed)", kind, path);
             return;
         }
@@ -338,5 +382,16 @@ public class FolderObserver implements WatchService.WatchEventListener {
         }
 
         checkPath(fullPath, kind);
+    }
+
+    /**
+     * Check if a folder name matches the allowed pattern for model folders.
+     * Only alphanumeric characters and underscores are allowed.
+     *
+     * @param folderName the name to validate
+     * @return true if the name matches the pattern, false otherwise
+     */
+    private static boolean isValidFolderName(String folderName) {
+        return folderName.matches("[A-Za-z0-9_]*");
     }
 }
